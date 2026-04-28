@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Manager</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <h1>Inventory Manager</h1>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Item Number</th>
+                <th>Value</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="inventory"></tbody>
+    </table>
+
+    <div class="add-form">
+        <h3>Add New Item</h3>
+        <input type="number" id="newItemNumber" placeholder="Item Number">
+        <select id="newItemValue">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+        </select>
+        <button onclick="addItem()">Add Item</button>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
