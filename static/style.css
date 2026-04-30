@@ -1,12 +1,16 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     max-width: 600px;
-    margin: 50px auto;
+    margin: 0 auto;
     padding: 20px;
     background: #f5f5f5;
+    min-height: 100vh;
+    box-sizing: border-box;
 }
 h1 {
     color: #333;
+    text-align: center;
+    margin-bottom: 20px;
 }
 table {
     width: 100%;
@@ -29,6 +33,58 @@ button {
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
+}
+
+@media screen and (max-width: 480px) {
+    button {
+        padding: 8px 10px;
+        font-size: 13px;
+        margin-bottom: 4px;
+    }
+    th, td {
+        padding: 6px 4px;
+    }
+td {
+    position: relative;
+}
+
+td button {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+@media screen and (max-width: 480px) {
+    td {
+        position: static;
+    }
+    td button {
+        display: block;
+        width: calc(100% - 16px);
+        margin: 4px 8px 0 8px;
+        padding: 8px 10px;
+        font-size: 13px;
+    }
+    td button:first-child {
+        margin-top: 4px;
+    }
+    th, td {
+        padding: 6px 4px;
+    }
+    .yes, .no, .delete {
+        margin-left: 0;
+        margin-top: 0;
+    }
+    .delete {
+        margin-top: 4px;
+    }
+    h1 {
+        font-size: 24px;
+        margin-bottom: 15px;
+    }
+    table {
+        font-size: 13px;
+    }
+}
 }
 .yes {
     background: #4CAF50;
@@ -56,7 +112,48 @@ button {
     border-radius: 4px;
     margin-right: 10px;
 }
-.add-form button {
-    background: #2199F3;
-    color: white;
+
+.add-form .input-group {
+    display: inline-block;
+    margin-right: 10px;
+    vertical-align: top;
+}
+
+@media screen and (max-width: 480px) {
+    .add-form {
+        padding: 15px;
+    }
+    .add-form input, .add-form select {
+        padding: 6px;
+        margin-right: 0;
+        font-size: 14px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .add-form .input-group {
+        display: block;
+        margin-right: 0;
+        margin-bottom: 8px;
+        width: 100%;
+    }
+    .add-form button {
+        width: 100%;
+        padding: 12px;
+        font-size: 16px;
+    }
+    h1 {
+        font-size: 24px;
+        margin-bottom: 15px;
+    }
+    table {
+        font-size: 13px;
+    }
+}
+
+/* Extra small devices */
+@media screen and (max-width: 360px) {
+    th, td {
+        padding: 6px 4px;
+        font-size: 12px;
+    }
 }

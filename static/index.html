@@ -22,12 +22,18 @@
 
     <div class="add-form">
         <h3>Add New Item</h3>
-        <input type="number" id="newItemNumber" placeholder="Item Number">
-        <select id="newItemValue">
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-        </select>
-        <button onclick="addItem()">Add Item</button>
+        <div class="input-group">
+            <input type="number" id="newItemNumber" placeholder="Item Number">
+        </div>
+        <div class="input-group">
+            <select id="newItemValue">
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <button onclick="addItem()">Add Item</button>
+        </div>
     </div>
 
     <script src="/app.js"></script>
