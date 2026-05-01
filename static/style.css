@@ -1,104 +1,69 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    max-width: 600px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
     background: #f5f5f5;
     min-height: 100vh;
     box-sizing: border-box;
 }
+
 h1 {
     color: #333;
     text-align: center;
     margin-bottom: 20px;
 }
+
+/* Responsive table container */
+.table-container {
+    overflow-x: auto;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
-    background: white;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    min-width: 800px;
 }
+
 th, td {
-    padding: 12px;
+    padding: 12px 10px;
     text-align: left;
     border-bottom: 1px solid #eee;
+    white-space: nowrap;
 }
+
 th {
     background: #f8f8f8;
     font-weight: 600;
+    color: #333;
 }
+
 button {
     padding: 6px 12px;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
+    margin-right: 4px;
+    margin-bottom: 4px;
 }
 
-@media screen and (max-width: 480px) {
-    button {
-        padding: 8px 10px;
-        font-size: 13px;
-        margin-bottom: 4px;
-    }
-    th, td {
-        padding: 6px 4px;
-    }
-td {
-    position: relative;
-}
-
-td button {
-    margin-left: 0;
-    margin-right: 0;
-}
-
-@media screen and (max-width: 480px) {
-    td {
-        position: static;
-    }
-    td button {
-        display: block;
-        width: calc(100% - 16px);
-        margin: 4px 8px 0 8px;
-        padding: 8px 10px;
-        font-size: 13px;
-    }
-    td button:first-child {
-        margin-top: 4px;
-    }
-    th, td {
-        padding: 6px 4px;
-    }
-    .yes, .no, .delete {
-        margin-left: 0;
-        margin-top: 0;
-    }
-    .delete {
-        margin-top: 4px;
-    }
-    h1 {
-        font-size: 24px;
-        margin-bottom: 15px;
-    }
-    table {
-        font-size: 13px;
-    }
-}
-}
-.yes {
-    background: #4CAF50;
+button.edit {
+    background: #2196F3;
     color: white;
 }
-.no {
+
+button.delete {
     background: #f44336;
     color: white;
+    margin-left: 0;
 }
-.delete {
-    background: #666;
-    color: white;
-    margin-left: 8px;
-}
+
+/* Form styling */
 .add-form {
     margin-top: 20px;
     padding: 20px;
@@ -106,52 +71,138 @@ td button {
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
-.add-form input, .add-form select {
-    padding: 8px;
+
+.add-form h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group.full-width {
+    grid-column: 1 / -1;
+}
+
+.form-group label {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #444;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    padding: 10px;
     border: 1px solid #ddd;
-    border-radius: 4px;
-    margin-right: 10px;
+    border-radius: 6px;
+    font-size: 16px;
+    transition: border-color 0.2s;
+    font-family: inherit;
 }
 
-.add-form .input-group {
-    display: inline-block;
-    margin-right: 10px;
-    vertical-align: top;
+.form-group input:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #2196F3;
+    box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1);
 }
 
-@media screen and (max-width: 480px) {
+.form-group textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.form-actions button[type="submit"] {
+    background: #4CAF50;
+    color: white;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 6px;
+}
+
+.form-actions button[type="submit"]:hover {
+    background: #45a049;
+}
+
+.form-actions button[type="button"] {
+    background: #9e9e9e;
+    color: white;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 6px;
+}
+
+.form-actions button[type="button"]:hover {
+    background: #757575;
+}
+
+/* Mobile responsive */
+@media screen and (max-width: 768px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .form-group.full-width {
+        grid-column: auto;
+    }
+
+    .form-group input,
+    .form-group textarea {
+        font-size: 16px; /* Prevents zoom on iOS */
+        padding: 12px;
+    }
+
     .add-form {
         padding: 15px;
     }
-    .add-form input, .add-form select {
-        padding: 6px;
-        margin-right: 0;
-        font-size: 14px;
-        width: 100%;
-        box-sizing: border-box;
-    }
-    .add-form .input-group {
-        display: block;
-        margin-right: 0;
-        margin-bottom: 8px;
-        width: 100%;
-    }
-    .add-form button {
-        width: 100%;
-        padding: 12px;
-        font-size: 16px;
-    }
+
     h1 {
-        font-size: 24px;
-        margin-bottom: 15px;
+        font-size: 20px;
     }
-    table {
+
+    button {
+        padding: 8px 10px;
         font-size: 13px;
+    }
+
+    th, td {
+        padding: 8px 6px;
+        font-size: 14px;
     }
 }
 
-/* Extra small devices */
-@media screen and (max-width: 360px) {
+@media screen and (max-width: 480px) {
+    .form-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .form-actions button {
+        width: 100%;
+        margin: 4px 0;
+    }
+
     th, td {
         padding: 6px 4px;
         font-size: 12px;

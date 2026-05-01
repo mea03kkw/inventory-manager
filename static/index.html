@@ -9,31 +9,110 @@
 <body>
     <h1>Inventory Manager</h1>
 
-    <table>
-        <thead>
-            <tr>
-                <th>Item Number</th>
-                <th>Value</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody id="inventory"></tbody>
-    </table>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>SerialNum</th>
+                    <th>ProductName</th>
+                    <th>SampleType</th>
+                    <th>Status</th>
+                    <th>StorageLocationCode</th>
+                    <th>DateReceived</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="inventory"></tbody>
+        </table>
+    </div>
 
     <div class="add-form">
-        <h3>Add New Item</h3>
-        <div class="input-group">
-            <input type="number" id="newItemNumber" placeholder="Item Number">
-        </div>
-        <div class="input-group">
-            <select id="newItemValue">
-                <option value="true">Yes</option>
-                <option value="false">No</option>
-            </select>
-        </div>
-        <div class="input-group">
-            <button onclick="addItem()">Add Item</button>
-        </div>
+        <h3 id="formTitle">Add / Edit Item</h3>
+        <form id="itemForm" onsubmit="submitForm(event)">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="Title">Title</label>
+                    <input type="text" id="Title" placeholder="Title">
+                </div>
+                <div class="form-group">
+                    <label for="SerialNum">SerialNum</label>
+                    <input type="text" id="SerialNum" placeholder="SerialNum">
+                </div>
+                <div class="form-group">
+                    <label for="SampleType">SampleType</label>
+                    <input type="text" id="SampleType" placeholder="SampleType">
+                </div>
+                <div class="form-group">
+                    <label for="ProductName">ProductName</label>
+                    <input type="text" id="ProductName" placeholder="ProductName">
+                </div>
+                <div class="form-group">
+                    <label for="Brand">Brand</label>
+                    <input type="text" id="Brand" placeholder="Brand">
+                </div>
+                <div class="form-group">
+                    <label for="Model">Model</label>
+                    <input type="text" id="Model" placeholder="Model">
+                </div>
+                <div class="form-group">
+                    <label for="Category">Category</label>
+                    <input type="text" id="Category" placeholder="Category">
+                </div>
+                <div class="form-group">
+                    <label for="SubCategory">SubCategory</label>
+                    <input type="text" id="SubCategory" placeholder="SubCategory">
+                </div>
+                <div class="form-group">
+                    <label for="DepartmentOwner">DepartmentOwner</label>
+                    <input type="text" id="DepartmentOwner" placeholder="DepartmentOwner">
+                </div>
+                <div class="form-group">
+                    <label for="Condition">Condition</label>
+                    <input type="text" id="Condition" placeholder="Condition">
+                </div>
+                <div class="form-group">
+                    <label for="DateReceived">DateReceived</label>
+                    <input type="text" id="DateReceived" placeholder="DateReceived">
+                </div>
+                <div class="form-group">
+                    <label for="StorageLocationCode">StorageLocationCode</label>
+                    <input type="text" id="StorageLocationCode" placeholder="StorageLocationCode">
+                </div>
+                <div class="form-group">
+                    <label for="UnitCount">UnitCount</label>
+                    <input type="text" id="UnitCount" placeholder="UnitCount">
+                </div>
+                <div class="form-group">
+                    <label for="UnitMeasure">UnitMeasure</label>
+                    <input type="text" id="UnitMeasure" placeholder="UnitMeasure">
+                </div>
+                <div class="form-group">
+                    <label for="Status">Status</label>
+                    <input type="text" id="Status" placeholder="Status">
+                </div>
+                <div class="form-group">
+                    <label for="PhotoLink">PhotoLink</label>
+                    <input type="text" id="PhotoLink" placeholder="PhotoLink">
+                </div>
+                <div class="form-group full-width">
+                    <label for="Notes">Notes</label>
+                    <textarea id="Notes" rows="3" placeholder="Notes"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="Column1">Column1</label>
+                    <input type="text" id="Column1" placeholder="Column1">
+                </div>
+                <div class="form-group full-width">
+                    <label for="Attachments">Attachments (comma-separated links)</label>
+                    <input type="text" id="Attachments" placeholder="Attachments">
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" id="submitBtn">Add Item</button>
+                <button type="button" id="cancelBtn" onclick="cancelEdit()" style="display: none;">Cancel Edit</button>
+            </div>
+        </form>
     </div>
 
     <script src="/app.js"></script>
