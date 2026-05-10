@@ -1,4 +1,8 @@
 """FastAPI backend for sample management application."""
+# ============================================================================
+# Imports & Configuration
+# ============================================================================
+
 import os
 from typing import Optional, Tuple
 
@@ -46,6 +50,11 @@ ALL_FIELDS = [
 # Pydantic models
 # ============================================================================
 
+# ============================================================================
+# Models
+# ============================================================================
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -63,6 +72,11 @@ class UserOut(BaseModel):
 # ============================================================================
 
 
+# ============================================================================
+# Database Helpers
+# ============================================================================
+
+
 def _get_sync_db():
     """Get a synchronous database connection (psycopg2 or sqlite3 for dev fallback)."""
     database_url = os.getenv("DATABASE_URL", "")
@@ -71,19 +85,6 @@ def _get_sync_db():
     # For sync context, use sqlite3 instead of aiosqlite
     import sqlite3
     return sqlite3.connect("sample_management.db")
-
-
-async def get_db():
-    """Get a database connection.
-
-    Returns an aiosqlite connection for SQLite or a psycopg2 connection
-    for PostgreSQL (wrapped in threadpool), depending on the DATABASE_URL.
-    """
-    database_url = os.getenv("DATABASE_URL", "")
-    if is_postgres():
-        # psycopg2 is sync; wrap in threadpool
-        return await run_in_threadpool(psycopg2.connect, database_url)
-    return await aiosqlite.connect("sample_management.db")
 
 
 def is_postgres() -> bool:
@@ -102,6 +103,10 @@ def placeholder() -> str:
 
 # ============================================================================
 # Password utilities
+# ============================================================================
+
+# ============================================================================
+# Auth Helpers
 # ============================================================================
 
 import hashlib
@@ -196,6 +201,10 @@ app.add_middleware(
     session_cookie="session",
     max_age=None,
 )
+
+# ============================================================================
+# Static File Serving
+# ============================================================================
 
 # Serve static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -388,6 +397,10 @@ def health_check():
     return JSONResponse({"status": "ok"})
 
 
+# ============================================================================
+# Auth Routes
+# ============================================================================
+
 @app.post("/api/auth/login")
 async def login(request: Request, payload: LoginRequest):
     """Authenticate a user and create a session."""
@@ -451,7 +464,7 @@ async def get_me(request: Request):
 
 
 # ============================================================================
-# Read-only Sample Endpoints
+# Item CRUD Routes
 # ============================================================================
 
 @app.get("/api/items")
@@ -849,7 +862,7 @@ class CheckoutReturnIn(BaseModel):
 
 
 # ============================================================================
-# Checkout Endpoints
+# Checkout/Return Routes
 # ============================================================================
 
 @app.post("/api/checkout")
@@ -1094,7 +1107,7 @@ async def get_overdue_checkouts(request: Request):
 
 
 # ============================================================================
-# Dashboard Endpoints (Admin Only)
+# Dashboard Routes
 # ============================================================================
 
 @app.get("/api/dashboard/stats")
