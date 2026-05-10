@@ -3,118 +3,324 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Manager</title>
-    <link rel="stylesheet" href="/style.css">
+    <title>Sample Management System</title>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <h1>Inventory Manager</h1>
-
-    <div class="table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th>Title</th>
-                    <th>SerialNum</th>
-                    <th>ProductName</th>
-                    <th>SampleType</th>
-                    <th>Status</th>
-                    <th>StorageLocationCode</th>
-                    <th>DateReceived</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="inventory"></tbody>
-        </table>
+    <div class="header">
+        <h1>Sample Management System</h1>
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showSection('samples')">Samples</button>
+            <button class="nav-tab" data-admin-only onclick="showSection('dashboard')">Dashboard</button>
+        </div>
+        <div class="auth-bar" id="authBar">
+            <!-- Injected via JS based on auth state -->
+        </div>
     </div>
 
-    <div class="add-form">
-        <h3 id="formTitle">Add / Edit Item</h3>
-        <form id="itemForm" onsubmit="submitForm(event)">
-            <div class="form-grid">
+    <!-- Dashboard Section -->
+    <div id="dashboard-section" class="section hidden">
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">-</div>
+                <div class="stat-label">Total Samples</div>
+            </div>
+            <div class="stat-card stat-instock">
+                <div class="stat-value" id="statInStock">-</div>
+                <div class="stat-label">In Stock</div>
+            </div>
+            <div class="stat-card stat-checkedout">
+                <div class="stat-value" id="statCheckedOut">-</div>
+                <div class="stat-label">Checked Out</div>
+            </div>
+            <div class="stat-card stat-overdue">
+                <div class="stat-value" id="statOverdue">-</div>
+                <div class="stat-label">Overdue</div>
+            </div>
+            <div class="stat-card stat-lost">
+                <div class="stat-value" id="statLost">-</div>
+                <div class="stat-label">Lost</div>
+            </div>
+            <div class="stat-card stat-scrapped">
+                <div class="stat-value" id="statScrapped">-</div>
+                <div class="stat-label">Scrapped</div>
+            </div>
+        </div>
+
+        <div class="dashboard-cards">
+            <div class="card">
+                <h3>Currently Checked Out Items</h3>
+                <div class="table-container" id="currentCheckoutContainer">
+                    Loading...
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Overdue Items</h3>
+                <div class="table-container" id="overdueContainer">
+                    Loading...
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Rack Summary</h3>
+                <table class="rack-table">
+                    <thead>
+                        <tr>
+                            <th>Rack</th>
+                            <th>Total</th>
+                            <th>In Stock</th>
+                            <th>Out</th>
+                            <th>Lost</th>
+                            <th>Scrapped</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rackSummaryBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h3>Recent Returns</h3>
+                <div class="table-container" id="recentReturnsContainer">
+                    Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Samples Section -->
+    <div id="samples-section" class="section">
+        <div class="filters-bar">
+            <input type="text" id="searchBox" placeholder="Search by title, serial, type, or rack..." oninput="applyFilters()">
+            <select id="statusFilter" onchange="applyFilters()">
+                <option value="">All Status</option>
+                <option value="IN_STOCK">In Stock</option>
+                <option value="CHECKED_OUT">Checked Out</option>
+                <option value="LOST">Lost</option>
+                <option value="SCRAPPED">Scrapped</option>
+            </select>
+            <select id="rackFilter" onchange="applyFilters()">
+                <option value="">All Racks</option>
+            </select>
+            <button class="add-button" data-admin-only onclick="showAddForm()">+ Add Sample</button>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Serial</th>
+                        <th>Type</th>
+                        <th>Rack</th>
+                        <th>Status</th>
+                        <th>Current Borrower</th>
+                        <th>Expected Return</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="inventory">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+<!-- Add/Edit Modal -->
+<div id="addModal" class="modal" onclick="if(event.target===this)cancelEdit()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="formTitle">Add Sample</h3>
+            <button class="close-btn" onclick="cancelEdit()">&times;</button>
+        </div>
+        <form id="itemForm" onsubmit="submitItemForm(event)">
+            <div class="form-grid" style="padding:25px;">
+                <input type="hidden" id="itemId">
                 <div class="form-group">
-                    <label for="Title">Title</label>
-                    <input type="text" id="Title" placeholder="Title">
+                    <label for="Title">Title *</label>
+                    <input type="text" id="Title" required>
                 </div>
                 <div class="form-group">
-                    <label for="SerialNum">SerialNum</label>
-                    <input type="text" id="SerialNum" placeholder="SerialNum">
+                    <label for="SerialNum">Serial Number *</label>
+                    <input type="text" id="SerialNum" required>
                 </div>
                 <div class="form-group">
-                    <label for="SampleType">SampleType</label>
-                    <input type="text" id="SampleType" placeholder="SampleType">
+                    <label for="SampleType">Sample Type *</label>
+                    <input type="text" id="SampleType" required>
                 </div>
                 <div class="form-group">
-                    <label for="ProductName">ProductName</label>
-                    <input type="text" id="ProductName" placeholder="ProductName">
+                    <label for="ProductName">Product Name</label>
+                    <input type="text" id="ProductName">
                 </div>
                 <div class="form-group">
                     <label for="Brand">Brand</label>
-                    <input type="text" id="Brand" placeholder="Brand">
+                    <input type="text" id="Brand">
                 </div>
                 <div class="form-group">
                     <label for="Model">Model</label>
-                    <input type="text" id="Model" placeholder="Model">
+                    <input type="text" id="Model">
                 </div>
                 <div class="form-group">
                     <label for="Category">Category</label>
-                    <input type="text" id="Category" placeholder="Category">
+                    <input type="text" id="Category">
                 </div>
                 <div class="form-group">
-                    <label for="SubCategory">SubCategory</label>
-                    <input type="text" id="SubCategory" placeholder="SubCategory">
+                    <label for="SubCategory">Sub Category</label>
+                    <input type="text" id="SubCategory">
                 </div>
                 <div class="form-group">
-                    <label for="DepartmentOwner">DepartmentOwner</label>
-                    <input type="text" id="DepartmentOwner" placeholder="DepartmentOwner">
+                    <label for="DepartmentOwner">Department</label>
+                    <input type="text" id="DepartmentOwner">
                 </div>
                 <div class="form-group">
                     <label for="Condition">Condition</label>
-                    <input type="text" id="Condition" placeholder="Condition">
+                    <input type="text" id="Condition">
                 </div>
                 <div class="form-group">
-                    <label for="DateReceived">DateReceived</label>
-                    <input type="text" id="DateReceived" placeholder="DateReceived">
+                    <label for="DateReceived">Date Received</label>
+                    <input type="date" id="DateReceived">
                 </div>
                 <div class="form-group">
-                    <label for="StorageLocationCode">StorageLocationCode</label>
-                    <input type="text" id="StorageLocationCode" placeholder="StorageLocationCode">
+                    <label for="StorageLocationCode">Storage Rack *</label>
+                    <input type="text" id="StorageLocationCode" required placeholder="e.g., A1-B2">
                 </div>
                 <div class="form-group">
-                    <label for="UnitCount">UnitCount</label>
-                    <input type="text" id="UnitCount" placeholder="UnitCount">
+                    <label for="UnitCount">Unit Count</label>
+                    <input type="text" id="UnitCount">
                 </div>
                 <div class="form-group">
-                    <label for="UnitMeasure">UnitMeasure</label>
-                    <input type="text" id="UnitMeasure" placeholder="UnitMeasure">
+                    <label for="UnitMeasure">Unit Measure</label>
+                    <input type="text" id="UnitMeasure">
                 </div>
                 <div class="form-group">
                     <label for="Status">Status</label>
-                    <input type="text" id="Status" placeholder="Status">
-                </div>
-                <div class="form-group">
-                    <label for="PhotoLink">PhotoLink</label>
-                    <input type="text" id="PhotoLink" placeholder="PhotoLink">
+                    <select id="Status">
+                        <option value="IN_STOCK">In Stock</option>
+                        <option value="LOST">Lost</option>
+                        <option value="SCRAPPED">Scrapped</option>
+                    </select>
                 </div>
                 <div class="form-group full-width">
                     <label for="Notes">Notes</label>
-                    <textarea id="Notes" rows="3" placeholder="Notes"></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="Column1">Column1</label>
-                    <input type="text" id="Column1" placeholder="Column1">
-                </div>
-                <div class="form-group full-width">
-                    <label for="Attachments">Attachments (comma-separated links)</label>
-                    <input type="text" id="Attachments" placeholder="Attachments">
+                    <textarea id="Notes" rows="3"></textarea>
                 </div>
             </div>
-            <div class="form-actions">
-                <button type="submit" id="submitBtn">Add Item</button>
-                <button type="button" id="cancelBtn" onclick="cancelEdit()" style="display: none;">Cancel Edit</button>
+            <div class="form-actions" style="padding:0 25px 25px;">
+                <button type="submit" id="submitBtn">Add Sample</button>
+                <button type="button" id="cancelBtn" onclick="cancelEdit()">Cancel</button>
             </div>
         </form>
     </div>
+</div>
 
-    <script src="/app.js"></script>
+<!-- Checkout Modal -->
+<div id="checkoutModal" class="modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Checkout Sample</h3>
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <div id="checkoutSampleInfo"></div>
+        <form onsubmit="submitCheckout(event)">
+            <input type="hidden" id="checkoutSampleId">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Borrower Name *</label>
+                    <input type="text" id="borrowerName" required>
+                </div>
+                <div class="form-group">
+                    <label>Department</label>
+                    <input type="text" id="borrowerDepartment">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="borrowerEmail">
+                </div>
+                <div class="form-group">
+                    <label>Expected Return Date</label>
+                    <input type="date" id="expectedReturnDate">
+                </div>
+                <div class="form-group full-width">
+                    <label>Remarks</label>
+                    <textarea id="checkoutRemarks" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Checkout</button>
+                <button type="button" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Return Modal -->
+<div id="returnModal" class="modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Return Sample</h3>
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <div id="returnSampleInfo"></div>
+        <form onsubmit="submitReturn(event)">
+            <input type="hidden" id="returnRecordId">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Actual Return Date</label>
+                    <input type="date" id="actualReturnDate">
+                </div>
+                <div class="form-group full-width">
+                    <label>Return Remarks</label>
+                    <textarea id="returnRemarks" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Confirm Return</button>
+                <button type="button" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Detail Modal -->
+<div id="detailModal" class="modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content detail-modal">
+        <div class="modal-header">
+            <h3>Sample Details</h3>
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <div id="sampleDetailContent"></div>
+    </div>
+</div>
+
+<!-- Login Modal -->
+<div id="loginModal" class="modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Login</h3>
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <form onsubmit="submitLogin(event)">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Login</button>
+                <button type="button" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+        <div style="padding:0 25px;color:#666;font-size:13px;margin-top:15px;">
+            Dev accounts: admin / admin123 or user / user123
+        </div>
+    </div>
+</div>
+
+    <script src="/static/app.js"></script>
 </body>
 </html>
