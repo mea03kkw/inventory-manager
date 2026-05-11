@@ -191,16 +191,72 @@ app = FastAPI(
     title="Sample Management API",
     description="Backend for sample inventory and checkout tracking.",
     version="1.0.0",
+    docs_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/docs",
+    redoc_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/redoc",
+    openapi_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/openapi.json",
 )
 
 SESSION_SECRET = os.getenv("SESSION_SECRET", "dev-secret-change-in-production")
+
+APP_ENV = os.getenv("APP_ENV", "development")
+
+SESSION_MAX_AGE_SECONDS = int(os.getenv("SESSION_MAX_AGE_SECONDS", "28800"))
 
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
     session_cookie="session",
-    max_age=None,
+    max_age=SESSION_MAX_AGE_SECONDS,
+    same_site="lax",
+    https_only=(APP_ENV == "production"),
 )
+
+
+# ============================================================================
+# Production environment guard
+# ============================================================================
+
+def _production_env_guard():
+    """Raise RuntimeError in production if insecure defaults are still in use."""
+    if APP_ENV != "production":
+        return
+    errors = []
+    if SESSION_SECRET == "dev-secret-change-in-production":
+        errors.append("SESSION_SECRET is the insecure default; set it via environment variable")
+    if os.getenv("ADMIN_PASSWORD", "admin123") == "admin123":
+        errors.append("ADMIN_PASSWORD is the insecure default; set it via ADMIN_PASSWORD environment variable")
+    if os.getenv("USER_PASSWORD", "user123") == "user123":
+        errors.append("USER_PASSWORD is the insecure default; set it via USER_PASSWORD environment variable")
+    if errors:
+        raise RuntimeError(
+            "Production security guard: insecure defaults detected. "
+            + "; ".join(errors)
+            + ". Set the required environment variables and restart."
+        )
+
+
+_production_env_guard()
+
+# ============================================================================
+# Auth helper functions
+# ============================================================================
+
+
+async def require_login(request: Request) -> UserOut:
+    """Ensure the user is logged in; raise 401 if not."""
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+async def require_admin(request: Request) -> UserOut:
+    """Ensure the user is logged in and is an admin; raise 401/403 as appropriate."""
+    user = await require_login(request)
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
 
 # ============================================================================
 # Static File Serving
@@ -262,10 +318,14 @@ def init_db():
     cur.execute("SELECT COUNT(*) FROM users")
     user_count = cur.fetchone()[0]
     if user_count == 0:
-        # Development seed accounts — DO NOT use in production
+        # Development seed accounts — use env vars in production
+        admin_username = os.getenv("ADMIN_USERNAME", "admin")
+        admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+        user_username = os.getenv("USER_USERNAME", "user")
+        user_password = os.getenv("USER_PASSWORD", "user123")
         dev_accounts = [
-            ("admin", "admin123", True, "System Administrator"),
-            ("user", "user123", False, "Regular User"),
+            (admin_username, admin_password, True, "System Administrator"),
+            (user_username, user_password, False, "Regular User"),
         ]
         for username, password, is_admin, display in dev_accounts:
             ph, salt_val = hash_password(password)
@@ -276,7 +336,7 @@ def init_db():
                    VALUES ({ph_placeholder}, {ph_placeholder}, {ph_placeholder}, {ph_placeholder}, {ph_placeholder}, {ph_placeholder})""",
                 (username, ph, salt_val, display, is_admin, True),
             )
-            print(f"[INIT] Seeded dev account: {username} / {password}")
+        print("[INIT] Seeded dev accounts (passwords not logged for safety)")
 
     # Create inventory and checkout_records tables
     if is_postgres():
@@ -468,9 +528,7 @@ async def logout(request: Request):
 @app.get("/api/auth/me")
 async def get_me(request: Request):
     """Return the currently authenticated user."""
-    user = await get_current_user(request)
-    if user is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = await require_login(request)
     return user
 
 
@@ -496,7 +554,12 @@ async def list_items(
                        cr.expected_return_date AS current_expected_return_date
                 FROM inventory i
                 LEFT JOIN checkout_records cr
-                  ON cr.sample_id = i.id AND cr.checkout_status = 'OUT'
+                  ON cr.id = (
+                      SELECT MAX(cr2.id)
+                      FROM checkout_records cr2
+                      WHERE cr2.sample_id = i.id
+                        AND cr2.checkout_status = 'OUT'
+                  )
                 WHERE 1=1
             """
             params = []
@@ -527,7 +590,12 @@ async def list_items(
                    cr.expected_return_date AS current_expected_return_date
             FROM inventory i
             LEFT JOIN checkout_records cr
-              ON cr.sample_id = i.id AND cr.checkout_status = 'OUT'
+              ON cr.id = (
+                  SELECT MAX(cr2.id)
+                  FROM checkout_records cr2
+                  WHERE cr2.sample_id = i.id
+                    AND cr2.checkout_status = 'OUT'
+              )
             WHERE 1=1
         """
         params = []
@@ -566,7 +634,12 @@ async def get_item(item_id: int):
                        cr.expected_return_date AS current_expected_return_date
                 FROM inventory i
                 LEFT JOIN checkout_records cr
-                  ON cr.sample_id = i.id AND cr.checkout_status = 'OUT'
+                  ON cr.id = (
+                      SELECT MAX(cr2.id)
+                      FROM checkout_records cr2
+                      WHERE cr2.sample_id = i.id
+                        AND cr2.checkout_status = 'OUT'
+                  )
                 WHERE i.id = %s
             """
             cur.execute(sql, (item_id,))
@@ -607,7 +680,12 @@ async def get_item(item_id: int):
                    cr.expected_return_date AS current_expected_return_date
             FROM inventory i
             LEFT JOIN checkout_records cr
-              ON cr.sample_id = i.id AND cr.checkout_status = 'OUT'
+              ON cr.id = (
+                  SELECT MAX(cr2.id)
+                  FROM checkout_records cr2
+                  WHERE cr2.sample_id = i.id
+                    AND cr2.checkout_status = 'OUT'
+              )
             WHERE i.id = ?
         """
         await cur.execute(sql, (item_id,))
@@ -664,9 +742,7 @@ class ItemIn(BaseModel):
 async def create_item(request: Request, payload: ItemIn):
     """Create a new inventory item."""
     # Role protection: only admin can create items
-    user = await get_current_user(request)
-    if not user or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    await require_admin(request)
     # Block creation with CHECKED_OUT status
     if payload.Status == "CHECKED_OUT":
         raise HTTPException(
@@ -720,9 +796,7 @@ async def create_item(request: Request, payload: ItemIn):
 async def update_item(request: Request, item_id: int, payload: ItemIn):
     """Update an existing inventory item. Does not allow setting Status=CHECKED_OUT."""
     # Role protection: only admin can update items
-    user = await get_current_user(request)
-    if not user or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    await require_admin(request)
     # Block direct status transition to CHECKED_OUT
     if payload.Status == "CHECKED_OUT":
         raise HTTPException(
@@ -796,9 +870,7 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
 async def delete_item(request: Request, item_id: int):
     """Delete an inventory item. Blocked if item has active checkout records."""
     # Role protection: only admin can delete items
-    user = await get_current_user(request)
-    if not user or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    await require_admin(request)
     database_url = os.getenv("DATABASE_URL", "")
 
     if is_postgres():
@@ -879,10 +951,8 @@ class CheckoutReturnIn(BaseModel):
 @app.post("/api/checkout")
 async def create_checkout(request: Request, payload: CheckoutIn):
     """Create a checkout record for a sample."""
-    # Role protection: only authenticated users can checkout (assuming any logged in user can checkout)
-    user = await get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # Role protection: only authenticated users can checkout
+    await require_login(request)
     # Borrower name is required
     if not payload.borrower_name or payload.borrower_name.strip() == "":
         raise HTTPException(
@@ -906,6 +976,11 @@ async def create_checkout(request: Request, payload: CheckoutIn):
             if status != "IN_STOCK":
                 conn.close()
                 raise HTTPException(status_code=400, detail=f"Sample status is {status}, cannot checkout")
+            # Prevent duplicate active checkout records
+            cur.execute("SELECT COUNT(*) FROM checkout_records WHERE sample_id = %s AND checkout_status = 'OUT'", (sample_id,))
+            if cur.fetchone()[0] > 0:
+                conn.close()
+                raise HTTPException(status_code=400, detail="Sample already has an active checkout record")
             # Create checkout record
             cur.execute("""
                 INSERT INTO checkout_records (sample_id, borrower_name, borrower_department, borrower_email,
@@ -933,6 +1008,11 @@ async def create_checkout(request: Request, payload: CheckoutIn):
         if status != "IN_STOCK":
             await conn.close()
             raise HTTPException(status_code=400, detail=f"Sample status is {status}, cannot checkout")
+        # Prevent duplicate active checkout records
+        await cur.execute("SELECT COUNT(*) FROM checkout_records WHERE sample_id = ? AND checkout_status = 'OUT'", (sample_id,))
+        if (await cur.fetchone())[0] > 0:
+            await conn.close()
+            raise HTTPException(status_code=400, detail="Sample already has an active checkout record")
         # Create checkout record
         await cur.execute("""
             INSERT INTO checkout_records (sample_id, borrower_name, borrower_department, borrower_email,
@@ -952,9 +1032,7 @@ async def create_checkout(request: Request, payload: CheckoutIn):
 async def return_checkout(request: Request, record_id: int, payload: CheckoutReturnIn):
     """Return a checked out sample."""
     # Role protection: only authenticated users can return items
-    user = await get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    await require_login(request)
     database_url = os.getenv("DATABASE_URL", "")
 
     if is_postgres():
@@ -1076,9 +1154,7 @@ async def get_checkout_records(sample_id: Optional[int] = None):
 @app.get("/api/checkout/overdue")
 async def get_overdue_checkouts(request: Request):
     """Get overdue checkouts (status OUT with expected_return_date < today)."""
-    user = await get_current_user(request)
-    if not user or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    await require_admin(request)
     from datetime import date
     today = date.today().isoformat()
     database_url = os.getenv("DATABASE_URL", "")
@@ -1124,9 +1200,7 @@ async def get_overdue_checkouts(request: Request):
 @app.get("/api/dashboard/stats")
 async def get_dashboard_stats(request: Request):
     """Get dashboard summary statistics."""
-    user = await get_current_user(request)
-    if not user or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    await require_admin(request)
     database_url = os.getenv("DATABASE_URL", "")
     if is_postgres():
         def _query():
@@ -1199,9 +1273,7 @@ async def get_dashboard_stats(request: Request):
 @app.get("/api/dashboard/rack-summary")
 async def get_rack_summary(request: Request):
     """Get sample counts grouped by rack/storage location."""
-    user = await get_current_user(request)
-    if not user or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    await require_admin(request)
     database_url = os.getenv("DATABASE_URL", "")
     if is_postgres():
         def _query():
@@ -1248,9 +1320,7 @@ async def get_rack_summary(request: Request):
 @app.get("/api/dashboard/current-checkout")
 async def get_dashboard_current_checkout(request: Request):
     """Get currently checked out samples for dashboard."""
-    user = await get_current_user(request)
-    if not user or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    await require_admin(request)
     database_url = os.getenv("DATABASE_URL", "")
     if is_postgres():
         def _query():
@@ -1291,9 +1361,7 @@ async def get_dashboard_current_checkout(request: Request):
 @app.get("/api/dashboard/recent-returns")
 async def get_dashboard_recent_returns(request: Request, limit: int = 10):
     """Get recent returned samples for dashboard."""
-    user = await get_current_user(request)
-    if not user or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    await require_admin(request)
     database_url = os.getenv("DATABASE_URL", "")
     if is_postgres():
         def _query():
