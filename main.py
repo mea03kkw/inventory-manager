@@ -306,9 +306,17 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 sample_title TEXT,
                 sample_serial TEXT,
-                sample_type TEXT
+                sample_type TEXT,
+                storage_location_code TEXT DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Add missing columns for existing checkout_records tables
+        cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS sample_title TEXT')
+        cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS sample_serial TEXT')
+        cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS sample_type TEXT')
+        cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS storage_location_code TEXT DEFAULT \'\'')
+        cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
     else:
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='checkout_records'")
         has_checkout = cur.fetchone() is not None
@@ -363,10 +371,13 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 sample_title TEXT,
                 sample_serial TEXT,
-                sample_type TEXT
+                sample_type TEXT,
+                storage_location_code TEXT DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        for col in ["sample_title", "sample_serial", "sample_type"]:
+        # Add missing columns for existing checkout_records tables
+        for col in ["sample_title", "sample_serial", "sample_type", "storage_location_code", "updated_at"]:
             try:
                 cur.execute(f'ALTER TABLE checkout_records ADD COLUMN "{col}" TEXT')
             except Exception:
@@ -886,22 +897,22 @@ async def create_checkout(request: Request, payload: CheckoutIn):
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             # Verify item exists and is IN_STOCK
-            cur.execute("SELECT Status, Title, SerialNum, SampleType FROM inventory WHERE id = %s", (sample_id,))
+            cur.execute("SELECT Status, Title, SerialNum, SampleType, StorageLocationCode FROM inventory WHERE id = %s", (sample_id,))
             row = cur.fetchone()
             if not row:
                 conn.close()
                 raise HTTPException(status_code=404, detail="Sample not found")
-            status, title, serial, stype = row
+            status, title, serial, stype, storage_loc = row
             if status != "IN_STOCK":
                 conn.close()
                 raise HTTPException(status_code=400, detail=f"Sample status is {status}, cannot checkout")
             # Create checkout record
             cur.execute("""
                 INSERT INTO checkout_records (sample_id, borrower_name, borrower_department, borrower_email,
-                    expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type)
-                VALUES (%s, %s, %s, %s, %s, %s, 'OUT', %s, %s, %s)
+                    expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type, storage_location_code, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, 'OUT', %s, %s, %s, %s, CURRENT_TIMESTAMP)
             """, (sample_id, payload.borrower_name, payload.borrower_department, payload.borrower_email,
-                  payload.expected_return_date, payload.checkout_remarks, title, serial, stype))
+                  payload.expected_return_date, payload.checkout_remarks, title, serial, stype, storage_loc))
             checkout_id = cur.lastrowid if hasattr(cur, 'lastrowid') else cur.fetchone()[0] if not cur.description else None
             # Update inventory status
             cur.execute("UPDATE inventory SET Status = 'CHECKED_OUT' WHERE id = %s", (sample_id,))
@@ -913,22 +924,22 @@ async def create_checkout(request: Request, payload: CheckoutIn):
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
         # Verify item exists and is IN_STOCK
-        await cur.execute("SELECT Status, Title, SerialNum, SampleType FROM inventory WHERE id = ?", (sample_id,))
+        await cur.execute("SELECT Status, Title, SerialNum, SampleType, StorageLocationCode FROM inventory WHERE id = ?", (sample_id,))
         row = await cur.fetchone()
         if not row:
             await conn.close()
             raise HTTPException(status_code=404, detail="Sample not found")
-        status, title, serial, stype = row
+        status, title, serial, stype, storage_loc = row
         if status != "IN_STOCK":
             await conn.close()
             raise HTTPException(status_code=400, detail=f"Sample status is {status}, cannot checkout")
         # Create checkout record
         await cur.execute("""
             INSERT INTO checkout_records (sample_id, borrower_name, borrower_department, borrower_email,
-                expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type)
-            VALUES (?, ?, ?, ?, ?, ?, 'OUT', ?, ?, ?)
+                expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type, storage_location_code, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'OUT', ?, ?, ?, ?, datetime('now'))
         """, (sample_id, payload.borrower_name, payload.borrower_department, payload.borrower_email,
-              payload.expected_return_date, payload.checkout_remarks, title, serial, stype))
+              payload.expected_return_date, payload.checkout_remarks, title, serial, stype, storage_loc))
         # Update inventory status
         await cur.execute("UPDATE inventory SET Status = 'CHECKED_OUT' WHERE id = ?", (sample_id,))
         await conn.commit()
@@ -963,7 +974,7 @@ async def return_checkout(request: Request, record_id: int, payload: CheckoutRet
             # Update checkout record
             cur.execute("""
                 UPDATE checkout_records SET checkout_status = 'RETURNED',
-                    actual_return_date = %s, return_remarks = %s
+                    actual_return_date = %s, return_remarks = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
             """, (payload.actual_return_date, payload.return_remarks, record_id))
             # Update inventory status
@@ -988,7 +999,7 @@ async def return_checkout(request: Request, record_id: int, payload: CheckoutRet
         # Update checkout record
         await cur.execute("""
             UPDATE checkout_records SET checkout_status = 'RETURNED',
-                actual_return_date = ?, return_remarks = ?
+                actual_return_date = ?, return_remarks = ?, updated_at = datetime('now')
             WHERE id = ?
         """, (payload.actual_return_date, payload.return_remarks, record_id))
         # Update inventory status
