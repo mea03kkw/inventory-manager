@@ -95,7 +95,7 @@ class UserOut(BaseModel):
 
 def _get_sync_db():
     """Get a synchronous database connection (psycopg2 or sqlite3 for dev fallback)."""
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         return psycopg2.connect(database_url)
     # For sync context, use sqlite3 instead of aiosqlite
@@ -105,8 +105,16 @@ def _get_sync_db():
 
 def is_postgres() -> bool:
     """Check if PostgreSQL is configured via DATABASE_URL."""
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     return database_url.startswith("postgres://") or database_url.startswith("postgresql://")
+
+
+def _get_db_url() -> str:
+    """Get the DATABASE_URL with normalized scheme (postgres:// -> postgresql://)."""
+    url = os.getenv("DATABASE_URL", "")
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
 
 
 def placeholder() -> str:
@@ -163,7 +171,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
     if user_id is None:
         return None
 
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         # psycopg2: use sync in threadpool
         def _query():
@@ -502,7 +510,7 @@ def health_check():
 @app.post("/api/auth/login")
 async def login(request: Request, payload: LoginRequest):
     """Authenticate a user and create a session."""
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -569,7 +577,7 @@ async def register(payload: RegisterRequest):
     if not username:
         raise HTTPException(status_code=400, detail="Invalid email address")
     password_hash, salt = hash_password(payload.password)
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _register():
             conn = psycopg2.connect(database_url)
@@ -616,7 +624,7 @@ async def register(payload: RegisterRequest):
 async def list_users(request: Request):
     """List all users (admin-only)."""
     await require_admin(request)
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -650,7 +658,7 @@ async def list_users(request: Request):
 async def get_user(user_id: int, request: Request):
     """Get a single user by ID (admin-only)."""
     await require_admin(request)
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -693,7 +701,7 @@ async def get_user(user_id: int, request: Request):
 async def update_user(user_id: int, request: Request, payload: UserUpdateIn):
     """Update a user's safe fields (admin-only)."""
     admin = await require_admin(request)
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
 
     if is_postgres():
         def _fetch():
@@ -808,7 +816,7 @@ async def reset_user_password(user_id: int, request: Request, payload: UserPassw
     if not payload.new_password or not payload.new_password.strip():
         raise HTTPException(status_code=400, detail="New password must not be empty")
 
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _check():
             conn = psycopg2.connect(database_url)
@@ -859,7 +867,7 @@ async def delete_user(user_id: int, request: Request):
     if admin.id == user_id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
 
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
 
     if is_postgres():
         def _fetch():
@@ -949,7 +957,7 @@ async def list_items(
     rack: Optional[str] = None,
 ):
     """List inventory items with optional search, status, and rack filters."""
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -1026,7 +1034,7 @@ async def list_items(
 @app.get("/api/items/{item_id}")
 async def get_item(item_id: int):
     """Get a single item with current checkout info and checkout history."""
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -1176,7 +1184,7 @@ async def create_item(request: Request, payload: ItemIn):
     field_sql = ", ".join([f'"{f}"' for f in field_list] + ["Status"])
     placeholder_sql = ", ".join(placeholders)
 
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -1210,7 +1218,7 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
             detail="Cannot set Status=CHECKED_OUT directly. Use checkout flow instead."
         )
 
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     existing = None
 
     if is_postgres():
@@ -1277,7 +1285,7 @@ async def delete_item(request: Request, item_id: int):
     """Delete an inventory item. Blocked if item has active checkout records."""
     # Role protection: only admin can delete items
     await require_admin(request)
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
 
     if is_postgres():
         def _check_and_delete():
@@ -1362,7 +1370,7 @@ async def create_checkout(request: Request, payload: CheckoutIn):
     borrower_name = user.display_name.strip() if user.display_name and user.display_name.strip() else user.username
     if not borrower_name:
         raise HTTPException(status_code=400, detail="Unable to determine borrower identity")
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     sample_id = payload.sample_id
     from datetime import date
     checkout_date = date.today().isoformat()
@@ -1438,7 +1446,7 @@ async def return_checkout(request: Request, record_id: int, payload: CheckoutRet
     """Return a checked out sample."""
     # Role protection: only authenticated users can return items
     await require_login(request)
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
 
     if is_postgres():
         def _return():
@@ -1496,7 +1504,7 @@ async def return_checkout(request: Request, record_id: int, payload: CheckoutRet
 @app.get("/api/checkout/records")
 async def get_checkout_records(sample_id: Optional[int] = None):
     """Get checkout records, optionally filtered by sample_id."""
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -1562,7 +1570,7 @@ async def get_overdue_checkouts(request: Request):
     await require_admin(request)
     from datetime import date
     today = date.today().isoformat()
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -1606,7 +1614,7 @@ async def get_overdue_checkouts(request: Request):
 async def get_dashboard_stats(request: Request):
     """Get dashboard summary statistics."""
     await require_admin(request)
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -1679,7 +1687,7 @@ async def get_dashboard_stats(request: Request):
 async def get_rack_summary(request: Request):
     """Get sample counts grouped by rack/storage location."""
     await require_admin(request)
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -1726,7 +1734,7 @@ async def get_rack_summary(request: Request):
 async def get_dashboard_current_checkout(request: Request):
     """Get currently checked out samples for dashboard."""
     await require_admin(request)
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
@@ -1767,7 +1775,7 @@ async def get_dashboard_current_checkout(request: Request):
 async def get_dashboard_recent_returns(request: Request, limit: int = 10):
     """Get recent returned samples for dashboard."""
     await require_admin(request)
-    database_url = os.getenv("DATABASE_URL", "")
+    database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
