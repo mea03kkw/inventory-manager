@@ -8,10 +8,19 @@
 </head>
 <body>
     <div class="header">
-        <h1>Sample Management System</h1>
-        <div class="nav-tabs">
-            <button class="nav-tab active" onclick="showSection('samples')">Samples</button>
-            <button class="nav-tab" data-admin-only onclick="showSection('dashboard')">Dashboard</button>
+        <div class="header-left">
+            <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleMenu()">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <h1>Sample Management System</h1>
+            <div class="nav-menu" id="navMenu">
+                <div class="nav-tabs">
+                    <button class="nav-tab active" onclick="showSection('samples')">Samples</button>
+                    <button class="nav-tab" data-admin-only onclick="showSection('dashboard')">Dashboard</button>
+                </div>
+            </div>
         </div>
         <div class="auth-bar" id="authBar">
             <!-- Injected via JS based on auth state -->
@@ -223,11 +232,11 @@
         <div id="checkoutSampleInfo"></div>
         <form onsubmit="submitCheckout(event)">
             <input type="hidden" id="checkoutSampleId">
+            <div id="checkoutBorrowerDisplay" class="form-group">
+                <label>Borrower</label>
+                <div class="readonly-value" id="checkoutBorrowerName" style="padding:12px 14px;background:#f5f5f5;border-radius:6px;font-size:15px;color:#333;"></div>
+            </div>
             <div class="form-grid">
-                <div class="form-group">
-                    <label>Borrower Name *</label>
-                    <input type="text" id="borrowerName" required>
-                </div>
                 <div class="form-group">
                     <label>Department</label>
                     <input type="text" id="borrowerDepartment">
@@ -316,8 +325,41 @@
             </div>
         </form>
         <div style="padding:0 25px;color:#666;font-size:13px;margin-top:15px;">
+            Use the part before @philips.com as your username
+        </div>
+        <div style="padding:0 25px;color:#666;font-size:13px;margin-top:5px;">
             Dev accounts: admin / admin123 or user / user123
         </div>
+    </div>
+</div>
+
+<!-- Register Modal -->
+<div id="registerModal" class="modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Register</h3>
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <form onsubmit="submitRegister(event)">
+            <div class="form-grid" style="padding:25px;">
+                <div class="form-group full-width">
+                    <label for="registerEmail">Philips Email</label>
+                    <input type="email" id="registerEmail" required placeholder="name@philips.com">
+                </div>
+                <div class="form-group full-width">
+                    <label for="registerPassword">Password</label>
+                    <input type="password" id="registerPassword" required>
+                </div>
+                <div class="form-group full-width">
+                    <label for="registerConfirmPassword">Confirm Password</label>
+                    <input type="password" id="registerConfirmPassword" required>
+                </div>
+            </div>
+            <div class="form-actions" style="padding:0 25px 25px;">
+                <button type="submit">Register</button>
+                <button type="button" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
     </div>
 </div>
 

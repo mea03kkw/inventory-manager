@@ -75,7 +75,91 @@ body {
    Navigation
    ============================================================ */
 
-/* Navigation Tabs */
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+}
+
+.hamburger-btn {
+    display: flex;
+    background: none;
+    border: 2px solid #e0e0e0;
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    flex-direction: column;
+    gap: 4px;
+    width: 40px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+}
+
+.hamburger-btn span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: #333;
+    border-radius: 2px;
+    transition: all 0.2s ease;
+}
+
+.hamburger-btn:hover {
+    border-color: #3f51b5;
+    background: #f5f7ff;
+}
+
+.hamburger-btn:hover span {
+    background: #3f51b5;
+}
+
+.nav-menu {
+    display: none;
+}
+
+.nav-menu.open {
+    display: block;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    padding: 8px;
+    min-width: 180px;
+    z-index: 200;
+}
+
+.nav-menu.open .nav-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.nav-menu.open .nav-tab {
+    width: 100%;
+    text-align: left;
+    justify-content: flex-start;
+}
+
+@media screen and (max-width: 768px) {
+    .nav-menu.open {
+        left: 10px;
+        right: 10px;
+        min-width: auto;
+        top: 56px;
+    }
+    
+    .header {
+        position: relative;
+    }
+}
+
 .nav-tabs {
     display: flex;
     gap: 8px;

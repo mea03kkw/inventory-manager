@@ -60,6 +60,11 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+
 class UserOut(BaseModel):
     id: int
     username: str
@@ -300,6 +305,10 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Add email column if not exists
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)")
+        # Add unique index for non-null emails
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL")
     else:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -313,6 +322,13 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Add email column if not exists
+        cur.execute("PRAGMA table_info(users)")
+        columns = [row[1] for row in cur.fetchall()]
+        if 'email' not in columns:
+            cur.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        # Add unique index for non-null emails
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL")
 
     # Seed minimal development users if table is empty
     cur.execute("SELECT COUNT(*) FROM users")
@@ -530,6 +546,59 @@ async def get_me(request: Request):
     """Return the currently authenticated user."""
     user = await require_login(request)
     return user
+
+
+@app.post("/api/auth/register")
+async def register(payload: RegisterRequest):
+    """Register a new normal user via Philips email."""
+    email = payload.email.strip().lower()
+    if not email.endswith("@philips.com"):
+        raise HTTPException(status_code=400, detail="Email must end with @philips.com")
+    username = email.split("@")[0]
+    if not username:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+    password_hash, salt = hash_password(payload.password)
+    database_url = os.getenv("DATABASE_URL", "")
+    if is_postgres():
+        def _register():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM users WHERE username = %s", (username,))
+            if cur.fetchone():
+                conn.close()
+                raise HTTPException(status_code=400, detail="Username already exists")
+            cur.execute("SELECT id FROM users WHERE email = %s", (email,))
+            if cur.fetchone():
+                conn.close()
+                raise HTTPException(status_code=400, detail="Email already registered")
+            cur.execute(
+                """INSERT INTO users (username, password_hash, salt, display_name, is_admin, is_active, email)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (username, password_hash, salt, username, False, True, email),
+            )
+            conn.commit()
+            conn.close()
+            return True
+        await run_in_threadpool(_register)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT id FROM users WHERE username = ?", (username,))
+        if await cur.fetchone():
+            await conn.close()
+            raise HTTPException(status_code=400, detail="Username already exists")
+        await cur.execute("SELECT id FROM users WHERE email = ?", (email,))
+        if await cur.fetchone():
+            await conn.close()
+            raise HTTPException(status_code=400, detail="Email already registered")
+        await cur.execute(
+            """INSERT INTO users (username, password_hash, salt, display_name, is_admin, is_active, email)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (username, password_hash, salt, username, False, True, email),
+        )
+        await conn.commit()
+        await conn.close()
+    return {"status": "ok", "username": username, "email": email}
 
 
 # ============================================================================
@@ -932,7 +1001,6 @@ async def delete_item(request: Request, item_id: int):
 
 class CheckoutIn(BaseModel):
     sample_id: int
-    borrower_name: str
     borrower_department: str = ""
     borrower_email: str = ""
     expected_return_date: str = ""
@@ -952,15 +1020,15 @@ class CheckoutReturnIn(BaseModel):
 async def create_checkout(request: Request, payload: CheckoutIn):
     """Create a checkout record for a sample."""
     # Role protection: only authenticated users can checkout
-    await require_login(request)
-    # Borrower name is required
-    if not payload.borrower_name or payload.borrower_name.strip() == "":
-        raise HTTPException(
-            status_code=400,
-            detail="Borrower name is required"
-        )
+    user = await require_login(request)
+    # Derive borrower name from authenticated user
+    borrower_name = user.display_name.strip() if user.display_name and user.display_name.strip() else user.username
+    if not borrower_name:
+        raise HTTPException(status_code=400, detail="Unable to determine borrower identity")
     database_url = os.getenv("DATABASE_URL", "")
     sample_id = payload.sample_id
+    from datetime import date
+    checkout_date = date.today().isoformat()
 
     if is_postgres():
         def _checkout():
@@ -984,9 +1052,9 @@ async def create_checkout(request: Request, payload: CheckoutIn):
             # Create checkout record
             cur.execute("""
                 INSERT INTO checkout_records (sample_id, borrower_name, borrower_department, borrower_email,
-                    expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type, storage_location_code, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, 'OUT', %s, %s, %s, %s, CURRENT_TIMESTAMP)
-            """, (sample_id, payload.borrower_name, payload.borrower_department, payload.borrower_email,
+                    checkout_date, expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type, storage_location_code, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'OUT', %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            """, (sample_id, borrower_name, payload.borrower_department, payload.borrower_email, checkout_date,
                   payload.expected_return_date, payload.checkout_remarks, title, serial, stype, storage_loc))
             checkout_id = cur.lastrowid if hasattr(cur, 'lastrowid') else cur.fetchone()[0] if not cur.description else None
             # Update inventory status
@@ -1016,9 +1084,9 @@ async def create_checkout(request: Request, payload: CheckoutIn):
         # Create checkout record
         await cur.execute("""
             INSERT INTO checkout_records (sample_id, borrower_name, borrower_department, borrower_email,
-                expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type, storage_location_code, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'OUT', ?, ?, ?, ?, datetime('now'))
-        """, (sample_id, payload.borrower_name, payload.borrower_department, payload.borrower_email,
+                checkout_date, expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type, storage_location_code, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'OUT', ?, ?, ?, ?, datetime('now'))
+        """, (sample_id, borrower_name, payload.borrower_department, payload.borrower_email, checkout_date,
               payload.expected_return_date, payload.checkout_remarks, title, serial, stype, storage_loc))
         # Update inventory status
         await cur.execute("UPDATE inventory SET Status = 'CHECKED_OUT' WHERE id = ?", (sample_id,))

@@ -9,6 +9,7 @@ const API = {
     login: () => `${API_BASE}/auth/login`,
     logout: () => `${API_BASE}/auth/logout`,
     me: () => `${API_BASE}/auth/me`,
+    register: () => `${API_BASE}/auth/register`,
     // Samples
     list: () => `${API_BASE}/items`,
     create: () => `${API_BASE}/items`,
@@ -59,6 +60,7 @@ function updateAuthUI() {
     } else {
         bar.innerHTML = `
             <button class="edit" onclick="openLoginModal()">Login</button>
+            <button class="edit" onclick="openRegisterModal()">Register</button>
         `;
     }
     updateUIBasedOnRole();
@@ -106,6 +108,13 @@ function openLoginModal() {
     openModal('loginModal');
 }
 
+function openRegisterModal() {
+    document.getElementById('registerEmail').value = '';
+    document.getElementById('registerPassword').value = '';
+    document.getElementById('registerConfirmPassword').value = '';
+    openModal('registerModal');
+}
+
 async function submitLogin(e) {
     e.preventDefault();
     const username = document.getElementById('loginUsername').value.trim();
@@ -136,17 +145,91 @@ async function submitLogin(e) {
     }
 }
 
+async function submitRegister(e) {
+    e.preventDefault();
+    const email = document.getElementById('registerEmail').value.trim();
+    const password = document.getElementById('registerPassword').value;
+    const confirmPassword = document.getElementById('registerConfirmPassword').value;
+
+    if (!email) {
+        alert('Email is required');
+        return;
+    }
+    if (!email.endsWith('@philips.com')) {
+        alert('Email must end with @philips.com');
+        return;
+    }
+    if (!password) {
+        alert('Password is required');
+        return;
+    }
+    if (!confirmPassword) {
+        alert('Confirm password is required');
+        return;
+    }
+    if (password !== confirmPassword) {
+        alert('Passwords do not match');
+        return;
+    }
+
+    try {
+        const response = await fetch(API.register(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Registration failed');
+        }
+        const data = await response.json();
+        closeModal();
+        const username = email.split('@')[0];
+        document.getElementById('loginUsername').value = username;
+        document.getElementById('loginPassword').value = '';
+        openModal('loginModal');
+        alert('Account created successfully. Please log in.');
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
 async function logout() {
     try {
         await fetch(API.logout(), { method: 'POST' });
         currentUser = null;
         updateAuthUI();
+        closeMenu();
         loadItems();
         alert('Logged out');
     } catch (err) {
         alert('Error: ' + err.message);
     }
 }
+
+function toggleMenu() {
+    const menu = document.getElementById('navMenu');
+    menu.classList.toggle('open');
+}
+
+function closeMenu() {
+    const menu = document.getElementById('navMenu');
+    menu.classList.remove('open');
+}
+
+// Close menu when clicking outside
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('navMenu');
+    const btn = document.getElementById('hamburgerBtn');
+    if (!menu.contains(e.target) && !btn.contains(e.target)) {
+        menu.classList.remove('open');
+    }
+});
+
+// Close menu on Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu();
+});
 
 // ============================================================
 // Utility Functions
@@ -195,7 +278,7 @@ function closeModal() {
 
 function resetCheckoutForm() {
     document.getElementById('checkoutSampleId').value = '';
-    document.getElementById('borrowerName').value = '';
+    document.getElementById('checkoutBorrowerName').textContent = '';
     document.getElementById('borrowerDepartment').value = '';
     document.getElementById('borrowerEmail').value = '';
     document.getElementById('expectedReturnDate').value = '';
@@ -502,6 +585,14 @@ async function openCheckoutModal(sampleId) {
     
     document.getElementById('checkoutSampleId').value = sampleId;
     
+    // Display current user as borrower
+    const borrowerDisplay = document.getElementById('checkoutBorrowerName');
+    if (currentUser) {
+        borrowerDisplay.textContent = currentUser.display_name || currentUser.username || 'Unknown User';
+    } else {
+        borrowerDisplay.textContent = 'Not logged in';
+    }
+    
     const info = document.getElementById('checkoutSampleInfo');
     info.innerHTML = `
         <div class="sample-info-box">
@@ -527,16 +618,9 @@ async function submitCheckout(e) {
     e.preventDefault();
     
     const sampleId = document.getElementById('checkoutSampleId').value;
-    const borrower = document.getElementById('borrowerName').value.trim();
-    
-    if (!borrower) {
-        alert('Borrower name is required');
-        return;
-    }
     
     const data = {
         sample_id: parseInt(sampleId),
-        borrower_name: borrower,
         borrower_department: document.getElementById('borrowerDepartment').value.trim(),
         borrower_email: document.getElementById('borrowerEmail').value.trim(),
         expected_return_date: document.getElementById('expectedReturnDate').value,
@@ -1003,6 +1087,8 @@ function showSection(section) {
         alert('Dashboard access is restricted to administrators.');
         return;
     }
+    // Close mobile menu on navigation
+    closeMenu();
     document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.section').forEach(sec => sec.classList.add('hidden'));
     
