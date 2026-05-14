@@ -29,7 +29,9 @@ const API = {
     // Users
     users: () => `${API_BASE}/users`,
     userDetail: (id) => `${API_BASE}/users/${id}`,
-    userUpdate: (id) => `${API_BASE}/users/${id}`
+    userUpdate: (id) => `${API_BASE}/users/${id}`,
+    userResetPassword: (id) => `${API_BASE}/users/${id}/reset-password`,
+    userDelete: (id) => `${API_BASE}/users/${id}`
 };
 
 // ============================================================
@@ -1146,6 +1148,8 @@ function renderUsers(users) {
                 <td style="padding:14px 15px;font-size:14px;color:#555;">${escapeHtml(status)}</td>
                 <td style="padding:14px 15px;font-size:14px;color:#555;">
                     <button class="edit" onclick="openUserEditModal(${u.id})">Edit</button>
+                    <button class="edit" onclick="openUserResetPasswordModal(${u.id}, '${escapeHtml(u.username)}')">Reset Password</button>
+                    ${!u.is_admin ? `<button class="delete" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">Delete</button>` : ''}
                 </td>
             </tr>
         `;
@@ -1207,6 +1211,83 @@ async function submitUserEdit(e) {
     } catch (err) {
         errorDiv.textContent = err.message;
         errorDiv.style.display = 'block';
+    }
+}
+
+function openUserResetPasswordModal(userId, username) {
+    document.getElementById('resetPasswordUserId').value = userId;
+    document.getElementById('resetPasswordUsername').textContent = username;
+    document.getElementById('resetPasswordNew').value = '';
+    document.getElementById('resetPasswordConfirm').value = '';
+    document.getElementById('resetPasswordError').style.display = 'none';
+    openModal('userResetPasswordModal');
+}
+
+function closeUserResetPasswordModal() {
+    document.getElementById('resetPasswordError').style.display = 'none';
+    closeModal();
+}
+
+async function submitUserResetPassword(e) {
+    e.preventDefault();
+    const errorDiv = document.getElementById('resetPasswordError');
+    errorDiv.style.display = 'none';
+    errorDiv.textContent = '';
+
+    const userId = parseInt(document.getElementById('resetPasswordUserId').value);
+    const newPassword = document.getElementById('resetPasswordNew').value;
+    const confirmPassword = document.getElementById('resetPasswordConfirm').value;
+
+    if (!newPassword) {
+        errorDiv.textContent = 'New password is required';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    if (!confirmPassword) {
+        errorDiv.textContent = 'Confirm password is required';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        errorDiv.textContent = 'Passwords do not match';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    try {
+        const response = await fetch(API.userResetPassword(userId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_password: newPassword })
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Failed to reset password');
+        }
+        closeUserResetPasswordModal();
+        alert('Password reset successfully');
+    } catch (err) {
+        errorDiv.textContent = err.message;
+        errorDiv.style.display = 'block';
+    }
+}
+
+async function deleteUser(userId, username) {
+    if (!confirm('Are you sure you want to delete user "' + username + '"? This action cannot be undone.')) {
+        return;
+    }
+    try {
+        const response = await fetch(API.userDelete(userId), {
+            method: 'DELETE'
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Failed to delete user');
+        }
+        loadUsers();
+        alert('User deleted successfully');
+    } catch (err) {
+        alert('Error: ' + err.message);
     }
 }
 

@@ -72,6 +72,10 @@ class UserUpdateIn(BaseModel):
     is_active: Optional[bool] = None
 
 
+class UserPasswordResetIn(BaseModel):
+    new_password: str
+
+
 class UserOut(BaseModel):
     id: int
     username: str
@@ -794,6 +798,144 @@ async def update_user(user_id: int, request: Request, payload: UserUpdateIn):
         await conn.close()
 
     return await get_user(user_id, request)
+
+
+@app.put("/api/users/{user_id}/reset-password")
+async def reset_user_password(user_id: int, request: Request, payload: UserPasswordResetIn):
+    """Reset a user's password (admin-only)."""
+    await require_admin(request)
+
+    if not payload.new_password or not payload.new_password.strip():
+        raise HTTPException(status_code=400, detail="New password must not be empty")
+
+    database_url = os.getenv("DATABASE_URL", "")
+    if is_postgres():
+        def _check():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+            conn.close()
+            return row is not None
+        exists = await run_in_threadpool(_check)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+        row = await cur.fetchone()
+        exists = row is not None
+        await conn.close()
+
+    if not exists:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    password_hash, salt = hash_password(payload.new_password)
+
+    if is_postgres():
+        def _update():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("UPDATE users SET password_hash = %s, salt = %s WHERE id = %s",
+                        (password_hash, salt, user_id))
+            conn.commit()
+            conn.close()
+        await run_in_threadpool(_update)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?",
+                          (password_hash, salt, user_id))
+        await conn.commit()
+        await conn.close()
+
+    return {"status": "ok"}
+
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: int, request: Request):
+    """Delete a user with strict safeguards (admin-only)."""
+    admin = await require_admin(request)
+
+    if admin.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    database_url = os.getenv("DATABASE_URL", "")
+
+    if is_postgres():
+        def _fetch():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT id, username, is_admin, is_active FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+            conn.close()
+            return row
+        row = await run_in_threadpool(_fetch)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT id, username, is_admin, is_active FROM users WHERE id = ?", (user_id,))
+        row = await cur.fetchone()
+        await conn.close()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    _, username, is_admin, is_active = row
+
+    if is_admin and is_active:
+        if is_postgres():
+            def _count():
+                conn = psycopg2.connect(database_url)
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM users WHERE is_admin = TRUE AND is_active = TRUE")
+                return cur.fetchone()[0]
+            count = await run_in_threadpool(_count)
+        else:
+            conn = await aiosqlite.connect("sample_management.db")
+            cur = await conn.cursor()
+            await cur.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1 AND is_active = 1")
+            count = (await cur.fetchone())[0]
+            await conn.close()
+
+        if count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last active administrator")
+
+    if is_postgres():
+        def _check_history():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM checkout_records WHERE borrower_name = %s", (username,))
+            return cur.fetchone()[0]
+        history_count = await run_in_threadpool(_check_history)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT COUNT(*) FROM checkout_records WHERE borrower_name = ?", (username,))
+        history_count = (await cur.fetchone())[0]
+        await conn.close()
+
+    if history_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete user with checkout history; deactivate the account instead",
+        )
+
+    if is_postgres():
+        def _delete():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            conn.commit()
+            conn.close()
+        await run_in_threadpool(_delete)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        await conn.commit()
+        await conn.close()
+
+    return {"status": "ok"}
 
 
 # ============================================================================

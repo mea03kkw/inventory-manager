@@ -426,6 +426,38 @@
     </div>
 </div>
 
+<!-- Reset Password Modal -->
+<div id="userResetPasswordModal" class="modal" onclick="if(event.target===this)closeUserResetPasswordModal()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Reset Password</h3>
+            <button class="close-btn" onclick="closeUserResetPasswordModal()">&times;</button>
+        </div>
+        <form onsubmit="submitUserResetPassword(event)">
+            <input type="hidden" id="resetPasswordUserId">
+            <div class="form-grid" style="padding:25px;">
+                <div class="form-group full-width">
+                    <label>Username</label>
+                    <div id="resetPasswordUsername" style="padding:12px 14px;background:#f5f5f5;border-radius:6px;font-size:15px;color:#333;"></div>
+                </div>
+                <div class="form-group full-width">
+                    <label for="resetPasswordNew">New Password</label>
+                    <input type="password" id="resetPasswordNew" required>
+                </div>
+                <div class="form-group full-width">
+                    <label for="resetPasswordConfirm">Confirm New Password</label>
+                    <input type="password" id="resetPasswordConfirm" required>
+                </div>
+            </div>
+            <div class="form-actions" style="padding:0 25px 25px;">
+                <button type="submit">Reset Password</button>
+                <button type="button" onclick="closeUserResetPasswordModal()">Cancel</button>
+            </div>
+        </form>
+        <div id="resetPasswordError" style="padding:0 25px 15px;color:#c62828;font-size:13px;display:none;"></div>
+    </div>
+</div>
+
     <script src="/static/app.js"></script>
 </body>
 </html>
