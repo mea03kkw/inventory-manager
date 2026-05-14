@@ -19,6 +19,7 @@
                 <div class="nav-tabs">
                     <button class="nav-tab active" onclick="showSection('samples')">Samples</button>
                     <button class="nav-tab" data-admin-only onclick="showSection('dashboard')">Dashboard</button>
+                    <button class="nav-tab" data-admin-only onclick="showSection('users')">Users</button>
                 </div>
             </div>
         </div>
@@ -130,6 +131,26 @@
                     </tr>
                 </thead>
                 <tbody id="inventory">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Users Section -->
+    <div id="users-section" class="section hidden">
+        <div class="table-container" style="margin-top:20px;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>USERNAME</th>
+                        <th>ROLE</th>
+                        <th>EMAIL</th>
+                        <th>STATUS</th>
+                        <th>ACTIONS</th>
+                    </tr>
+                </thead>
+                <tbody id="usersTableBody">
+                    <tr><td colspan="5" style="text-align:center;padding:40px;color:#999;">Loading users...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -360,6 +381,48 @@
                 <button type="button" onclick="closeModal()">Cancel</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- User Edit Modal -->
+<div id="userEditModal" class="modal" onclick="if(event.target===this)closeUserEditModal()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Edit User</h3>
+            <button class="close-btn" onclick="closeUserEditModal()">&times;</button>
+        </div>
+        <form onsubmit="submitUserEdit(event)">
+            <input type="hidden" id="userEditId">
+            <div class="form-grid" style="padding:25px;">
+                <div class="form-group full-width">
+                    <label>Username</label>
+                    <div id="userEditUsername" style="padding:12px 14px;background:#f5f5f5;border-radius:6px;font-size:15px;color:#333;"></div>
+                </div>
+                <div class="form-group full-width">
+                    <label for="userEditEmail">Email</label>
+                    <input type="text" id="userEditEmail">
+                </div>
+                <div class="form-group full-width">
+                    <label for="userEditRole">Role</label>
+                    <select id="userEditRole">
+                        <option value="regular">Regular User</option>
+                        <option value="admin">System Administrator</option>
+                    </select>
+                </div>
+                <div class="form-group full-width">
+                    <label for="userEditStatus">Status</label>
+                    <select id="userEditStatus">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions" style="padding:0 25px 25px;">
+                <button type="submit">Save Changes</button>
+                <button type="button" onclick="closeUserEditModal()">Cancel</button>
+            </div>
+        </form>
+        <div id="userEditError" style="padding:0 25px 15px;color:#c62828;font-size:13px;display:none;"></div>
     </div>
 </div>
 

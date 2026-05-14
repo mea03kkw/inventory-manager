@@ -65,6 +65,13 @@ class RegisterRequest(BaseModel):
     password: str
 
 
+class UserUpdateIn(BaseModel):
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+    is_admin: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
 class UserOut(BaseModel):
     id: int
     username: str
@@ -599,6 +606,194 @@ async def register(payload: RegisterRequest):
         await conn.commit()
         await conn.close()
     return {"status": "ok", "username": username, "email": email}
+
+
+@app.get("/api/users")
+async def list_users(request: Request):
+    """List all users (admin-only)."""
+    await require_admin(request)
+    database_url = os.getenv("DATABASE_URL", "")
+    if is_postgres():
+        def _query():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, username, email, is_admin, is_active FROM users ORDER BY username ASC"
+            )
+            rows = cur.fetchall()
+            conn.close()
+            return [
+                {"id": r[0], "username": r[1], "email": r[2] or "", "is_admin": bool(r[3]), "is_active": bool(r[4])}
+                for r in rows
+            ]
+        return await run_in_threadpool(_query)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        conn.row_factory = aiosqlite.Row
+        cur = await conn.cursor()
+        await cur.execute(
+            "SELECT id, username, email, is_admin, is_active FROM users ORDER BY username ASC"
+        )
+        rows = await cur.fetchall()
+        await conn.close()
+        return [
+            {"id": r["id"], "username": r["username"], "email": r["email"] or "", "is_admin": bool(r["is_admin"]), "is_active": bool(r["is_active"])}
+            for r in rows
+        ]
+
+
+@app.get("/api/users/{user_id}")
+async def get_user(user_id: int, request: Request):
+    """Get a single user by ID (admin-only)."""
+    await require_admin(request)
+    database_url = os.getenv("DATABASE_URL", "")
+    if is_postgres():
+        def _query():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, username, email, is_admin, is_active, display_name FROM users WHERE id = %s",
+                (user_id,),
+            )
+            row = cur.fetchone()
+            conn.close()
+            return row
+        row = await run_in_threadpool(_query)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        conn.row_factory = aiosqlite.Row
+        cur = await conn.cursor()
+        await cur.execute(
+            "SELECT id, username, email, is_admin, is_active, display_name FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        await conn.close()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if is_postgres():
+        return {
+            "id": row[0], "username": row[1], "email": row[2] or "",
+            "is_admin": bool(row[3]), "is_active": bool(row[4]), "display_name": row[5] or "",
+        }
+    else:
+        return {
+            "id": row["id"], "username": row["username"], "email": row["email"] or "",
+            "is_admin": bool(row["is_admin"]), "is_active": bool(row["is_active"]), "display_name": row["display_name"] or "",
+        }
+
+
+@app.put("/api/users/{user_id}")
+async def update_user(user_id: int, request: Request, payload: UserUpdateIn):
+    """Update a user's safe fields (admin-only)."""
+    admin = await require_admin(request)
+    database_url = os.getenv("DATABASE_URL", "")
+
+    if is_postgres():
+        def _fetch():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT id, username, email, is_admin, is_active FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+            conn.close()
+            return row
+        row = await run_in_threadpool(_fetch)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT id, username, email, is_admin, is_active FROM users WHERE id = ?", (user_id,))
+        row = await cur.fetchone()
+        await conn.close()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    current_id, current_username, current_email, current_is_admin, current_is_active = row
+    updates = {}
+    ph = placeholder()
+
+    if payload.email is not None:
+        new_email = payload.email.strip().lower() if payload.email else ""
+        if new_email:
+            if not new_email.endswith("@philips.com"):
+                raise HTTPException(status_code=400, detail="Email must end with @philips.com")
+            if is_postgres():
+                def _check_email():
+                    conn = psycopg2.connect(database_url)
+                    cur = conn.cursor()
+                    cur.execute("SELECT id FROM users WHERE email = %s AND id != %s", (new_email, user_id))
+                    row = cur.fetchone()
+                    conn.close()
+                    return row
+                dup = await run_in_threadpool(_check_email)
+            else:
+                conn = await aiosqlite.connect("sample_management.db")
+                cur = await conn.cursor()
+                await cur.execute("SELECT id FROM users WHERE email = ? AND id != ?", (new_email, user_id))
+                dup = await cur.fetchone()
+                await conn.close()
+            if dup:
+                raise HTTPException(status_code=400, detail="Email already in use by another user")
+        updates["email"] = new_email
+
+    if payload.display_name is not None:
+        updates["display_name"] = payload.display_name
+
+    new_is_admin = payload.is_admin if payload.is_admin is not None else bool(current_is_admin)
+    new_is_active = payload.is_active if payload.is_active is not None else bool(current_is_active)
+
+    if bool(current_is_admin) and bool(current_is_active):
+        if not new_is_admin or not new_is_active:
+            if is_postgres():
+                def _count_admins():
+                    conn = psycopg2.connect(database_url)
+                    cur = conn.cursor()
+                    cur.execute("SELECT COUNT(*) FROM users WHERE is_admin = TRUE AND is_active = TRUE")
+                    return cur.fetchone()[0]
+                active_admin_count = await run_in_threadpool(_count_admins)
+            else:
+                conn = await aiosqlite.connect("sample_management.db")
+                cur = await conn.cursor()
+                await cur.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1 AND is_active = 1")
+                active_admin_count = (await cur.fetchone())[0]
+                await conn.close()
+
+            if active_admin_count <= 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot remove admin role or deactivate the last active administrator",
+                )
+
+    if payload.is_admin is not None:
+        updates["is_admin"] = payload.is_admin
+    if payload.is_active is not None:
+        updates["is_active"] = payload.is_active
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    set_clause = ", ".join(f'"{k}" = {ph}' for k in updates.keys())
+    values = list(updates.values())
+    values.append(user_id)
+
+    if is_postgres():
+        def _update():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute(f"UPDATE users SET {set_clause} WHERE id = %s", values)
+            conn.commit()
+            conn.close()
+        await run_in_threadpool(_update)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
+        await conn.commit()
+        await conn.close()
+
+    return await get_user(user_id, request)
 
 
 # ============================================================================

@@ -25,7 +25,11 @@ const API = {
     stats: () => `${API_BASE}/dashboard/stats`,
     rackSummary: () => `${API_BASE}/dashboard/rack-summary`,
     currentCheckout: () => `${API_BASE}/dashboard/current-checkout`,
-    recentReturns: (limit = 10) => `${API_BASE}/dashboard/recent-returns?limit=${limit}`
+    recentReturns: (limit = 10) => `${API_BASE}/dashboard/recent-returns?limit=${limit}`,
+    // Users
+    users: () => `${API_BASE}/users`,
+    userDetail: (id) => `${API_BASE}/users/${id}`,
+    userUpdate: (id) => `${API_BASE}/users/${id}`
 };
 
 // ============================================================
@@ -1082,12 +1086,11 @@ function renderRecentReturns(items) {
 // ============================================================
 
 function showSection(section) {
-    // Non-admins cannot access dashboard
-    if (section === 'dashboard' && (!currentUser || !currentUser.is_admin)) {
-        alert('Dashboard access is restricted to administrators.');
+    if ((section === 'dashboard' || section === 'users') && (!currentUser || !currentUser.is_admin)) {
+        const label = section === 'dashboard' ? 'Dashboard' : 'Users';
+        alert(label + ' access is restricted to administrators.');
         return;
     }
-    // Close mobile menu on navigation
     closeMenu();
     document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.section').forEach(sec => sec.classList.add('hidden'));
@@ -1100,6 +1103,110 @@ function showSection(section) {
         document.querySelectorAll('.nav-tab')[1].classList.add('active');
         document.getElementById('dashboard-section').classList.remove('hidden');
         loadDashboard();
+    } else if (section === 'users') {
+        document.querySelectorAll('.nav-tab')[2].classList.add('active');
+        document.getElementById('users-section').classList.remove('hidden');
+        loadUsers();
+    }
+}
+
+async function loadUsers() {
+    const tbody = document.getElementById('usersTableBody');
+    try {
+        const response = await fetch(API.users());
+        if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:#c62828;">Access denied</td></tr>';
+                return;
+            }
+            throw new Error('Failed to load users');
+        }
+        const users = await response.json();
+        renderUsers(users);
+    } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:#c62828;">Error loading users</td></tr>';
+    }
+}
+
+function renderUsers(users) {
+    const tbody = document.getElementById('usersTableBody');
+    if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:#999;">No users found</td></tr>';
+        return;
+    }
+    tbody.innerHTML = users.map(u => {
+        const role = u.is_admin ? 'System Administrator' : 'Regular User';
+        const status = u.is_active ? 'Active' : 'Inactive';
+        const email = u.email || '-';
+        return `
+            <tr style="border-bottom:1px solid #f0f0f0;">
+                <td style="padding:14px 15px;font-size:14px;color:#555;">${escapeHtml(u.username)}</td>
+                <td style="padding:14px 15px;font-size:14px;color:#555;">${escapeHtml(role)}</td>
+                <td style="padding:14px 15px;font-size:14px;color:#555;">${escapeHtml(email)}</td>
+                <td style="padding:14px 15px;font-size:14px;color:#555;">${escapeHtml(status)}</td>
+                <td style="padding:14px 15px;font-size:14px;color:#555;">
+                    <button class="edit" onclick="openUserEditModal(${u.id})">Edit</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function openUserEditModal(userId) {
+    document.getElementById('userEditError').style.display = 'none';
+    document.getElementById('userEditError').textContent = '';
+    try {
+        const response = await fetch(API.userDetail(userId));
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Failed to load user');
+        }
+        const user = await response.json();
+        document.getElementById('userEditId').value = user.id;
+        document.getElementById('userEditUsername').textContent = user.username;
+        document.getElementById('userEditEmail').value = user.email || '';
+        document.getElementById('userEditRole').value = user.is_admin ? 'admin' : 'regular';
+        document.getElementById('userEditStatus').value = user.is_active ? 'active' : 'inactive';
+        openModal('userEditModal');
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+function closeUserEditModal() {
+    document.getElementById('userEditError').style.display = 'none';
+    closeModal();
+}
+
+async function submitUserEdit(e) {
+    e.preventDefault();
+    const errorDiv = document.getElementById('userEditError');
+    errorDiv.style.display = 'none';
+    errorDiv.textContent = '';
+
+    const userId = parseInt(document.getElementById('userEditId').value);
+    const email = document.getElementById('userEditEmail').value.trim();
+    const is_admin = document.getElementById('userEditRole').value === 'admin';
+    const is_active = document.getElementById('userEditStatus').value === 'active';
+
+    const data = { email, is_admin, is_active };
+
+    try {
+        const response = await fetch(API.userUpdate(userId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Failed to update user');
+        }
+        closeUserEditModal();
+        loadUsers();
+        alert('User updated successfully');
+    } catch (err) {
+        errorDiv.textContent = err.message;
+        errorDiv.style.display = 'block';
     }
 }
 
