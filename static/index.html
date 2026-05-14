@@ -127,7 +127,7 @@
                         <th>Status</th>
                         <th>Current Borrower</th>
                         <th>Expected Return</th>
-                        <th>Actions</th>
+                        <th id="actionsHeader">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="inventory">
@@ -333,7 +333,10 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label for="loginUsername">Username</label>
-                    <input type="text" id="loginUsername" required>
+                    <div class="input-group">
+                        <input type="text" id="loginUsername" required placeholder="name">
+                        <span class="input-group-suffix">@philips.com</span>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="loginPassword">Password</label>

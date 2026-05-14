@@ -340,38 +340,43 @@ function renderItems() {
 
     const isLoggedIn = currentUser !== null;
     const isAdmin = isLoggedIn && currentUser.is_admin;
+    const showActions = isLoggedIn && !isAdmin;
+
+    // Show/hide Actions column header
+    const actionsHeader = document.getElementById('actionsHeader');
+    if (actionsHeader) {
+        actionsHeader.style.display = showActions ? '' : 'none';
+    }
 
     tbody.innerHTML = allItems.map(item => {
         const status = normalizeStatus(item.Status);
         const badgeClass = getStatusBadgeClass(status);
 
-        // Check if there's an active checkout
         const currentBorrower = item.current_borrower_name;
         const borrowerDisplay = currentBorrower ? currentBorrower : '-';
         const expectedDisplay = item.current_expected_return_date || '-';
 
-        const showCheckout = isLoggedIn && !isAdmin && status === 'IN_STOCK';
-        const showReturn = isLoggedIn && !isAdmin && status === 'CHECKED_OUT';
+        const showCheckout = showActions && status === 'IN_STOCK';
+        const showReturn = showActions && status === 'CHECKED_OUT';
+
+        const actionsHtml = showActions ? `
+                  <td>
+                      ${showCheckout ? `<button class="checkout-btn" onclick="event.stopPropagation(); openCheckoutModal(${item.id})">Checkout</button>` : ''}
+                      ${showReturn ? `<button class="return-btn" onclick="event.stopPropagation(); openReturnModal(${item.id})">Return</button>` : ''}
+                  </td>` : '';
 
         return `
-             <tr>
-                 <td>${escapeHtml(item.Title || '')}</td>
-                 <td>${escapeHtml(item.SerialNum || '')}</td>
-                 <td>${escapeHtml(item.SampleType || '')}</td>
-                 <td>${escapeHtml(item.StorageLocationCode || '')}</td>
-                 <td><span class="status-badge ${badgeClass}">${formatStatus(status)}</span></td>
-                 <td>${escapeHtml(borrowerDisplay)}</td>
-                 <td>${escapeHtml(expectedDisplay)}</td>
-                 <td>
-                     <button class="view-btn" onclick="viewItem(${item.id})">View</button>
-                     ${isAdmin ? `${status === 'IN_STOCK' ? `<button class="checkout-btn" onclick="openCheckoutModal(${item.id})">Checkout</button>` : ''}${status === 'CHECKED_OUT' ? `<button class="return-btn" onclick="openReturnModal(${item.id})">Return</button>` : ''}` : ''}
-                     ${showCheckout ? `<button class="checkout-btn" onclick="openCheckoutModal(${item.id})">Checkout</button>` : ''}
-                     ${showReturn ? `<button class="return-btn" onclick="openReturnModal(${item.id})">Return</button>` : ''}
-                     ${isAdmin ? `<button class="edit" onclick="startEdit(${item.id})">Edit</button>` : ''}
-                     ${isAdmin ? `<button class="delete" onclick="deleteSample(${item.id})">Delete</button>` : ''}
-                 </td>
-             </tr>
-           `;
+              <tr onclick="viewItem(${item.id})" style="cursor:pointer;">
+                  <td>${escapeHtml(item.Title || '')}</td>
+                  <td>${escapeHtml(item.SerialNum || '')}</td>
+                  <td>${escapeHtml(item.SampleType || '')}</td>
+                  <td>${escapeHtml(item.StorageLocationCode || '')}</td>
+                  <td><span class="status-badge ${badgeClass}">${formatStatus(status)}</span></td>
+                  <td>${escapeHtml(borrowerDisplay)}</td>
+                  <td>${escapeHtml(expectedDisplay)}</td>
+                  ${actionsHtml}
+              </tr>
+            `;
     }).join('');
 }
 
@@ -879,11 +884,12 @@ async function viewItem(id) {
              </div>
              ${currentBorrowerHtml}
              ${historyHtml}
-              <div style="margin-top:20px;padding-top:20px;border-top:1px solid #ddd;display:flex;gap:10px;">
-                  ${status === 'IN_STOCK' ? `<button class="checkout-btn" onclick="closeModal(); openCheckoutModal(${item.id})">Checkout</button>` : ''}
-                  ${status === 'CHECKED_OUT' ? `<button class="return-btn" onclick="closeModal(); openReturnModal(${item.id})">Return</button>` : ''}
-                  ${isAdmin ? `<button class="edit" onclick="closeModal(); startEdit(${item.id})">Edit</button>` : ''}
-              </div>
+               <div style="margin-top:20px;padding-top:20px;border-top:1px solid #ddd;display:flex;gap:10px;">
+                   ${status === 'IN_STOCK' ? `<button class="checkout-btn" onclick="closeModal(); openCheckoutModal(${item.id})">Checkout</button>` : ''}
+                   ${status === 'CHECKED_OUT' ? `<button class="return-btn" onclick="closeModal(); openReturnModal(${item.id})">Return</button>` : ''}
+                   ${isAdmin ? `<button class="edit" onclick="closeModal(); startEdit(${item.id})">Edit</button>` : ''}
+                   ${isAdmin ? `<button class="delete" onclick="closeModal(); deleteSample(${item.id})">Delete</button>` : ''}
+               </div>
          `;
         
         openModal('detailModal');
