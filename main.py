@@ -45,6 +45,62 @@ ALL_FIELDS = [
     "PhotoLink",
 ]
 
+_FIELD_NORMALIZE_MAP = {
+    "title": "Title",
+    "serialnum": "SerialNum",
+    "sampletype": "SampleType",
+    "productname": "ProductName",
+    "brand": "Brand",
+    "model": "Model",
+    "category": "Category",
+    "subcategory": "SubCategory",
+    "departmentowner": "DepartmentOwner",
+    "condition": "Condition",
+    "datereceived": "DateReceived",
+    "storagelocationcode": "StorageLocationCode",
+    "unitcount": "UnitCount",
+    "unitmeasure": "UnitMeasure",
+    "column1": "Column1",
+    "attachments": "Attachments",
+    "notes": "Notes",
+    "photolink": "PhotoLink",
+    "status": "Status",
+}
+
+PASSTHROUGH_KEYS = {
+    "id", "item_number", "value",
+    "current_borrower_name", "current_borrower_department",
+    "current_borrower_email", "current_expected_return_date",
+    "checkout_history", "sample_title", "sample_serial", "sample_type",
+    "borrower_name", "borrower_department", "borrower_email",
+    "checkout_date", "expected_return_date", "actual_return_date",
+    "checkout_status", "checkout_remarks", "return_remarks",
+    "storage_location_code", "created_at", "updated_at",
+}
+
+
+def _normalize_item_row(row_dict):
+    """Normalize a DB row dict to PascalCase keys matching ALL_FIELDS + Status.
+    
+    Handles the case where PostgreSQL may return both lowercase and PascalCase
+    variants of the same column by preferring non-None values.
+    """
+    normalized = {}
+    pass_through = {}
+    for key, value in row_dict.items():
+        if key in ALL_FIELDS or key == "Status" or key in PASSTHROUGH_KEYS:
+            if key not in normalized or (normalized.get(key) is None and value is not None):
+                normalized[key] = value
+            continue
+        mapped = _FIELD_NORMALIZE_MAP.get(key.lower() if key else "")
+        if mapped:
+            if mapped not in normalized or (normalized.get(mapped) is None and value is not None):
+                normalized[mapped] = value
+        else:
+            pass_through[key] = value
+    normalized.update(pass_through)
+    return normalized
+
 
 # ============================================================================
 # Pydantic models
@@ -115,6 +171,18 @@ def _get_db_url() -> str:
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     return url
+
+
+def _safe_pg_query(query_fn):
+    """Run a PostgreSQL query function via thread pool with error hardening."""
+    async def _wrapper():
+        try:
+            return await run_in_threadpool(query_fn)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return _wrapper()
 
 
 def placeholder() -> str:
@@ -978,22 +1046,22 @@ async def list_items(
             """
             params = []
             if search:
-                sql += " AND (i.title ILIKE %s OR i.serialnum ILIKE %s OR i.sampletype ILIKE %s)"
+                sql += ' AND (i."Title" ILIKE %s OR i."SerialNum" ILIKE %s OR i."SampleType" ILIKE %s)'
                 like = f"%{search}%"
                 params.extend([like, like, like])
             if status:
                 sql += " AND i.status = %s"
                 params.append(status)
             if rack:
-                sql += " AND i.storagelocationcode = %s"
+                sql += ' AND i."StorageLocationCode" = %s'
                 params.append(rack)
             cur.execute(sql, params)
             rows = cur.fetchall()
-            col_names = [d[0].lower() for d in cur.description]
-            result = [dict(zip(col_names, row)) for row in rows]
+            col_names = [d[0] for d in cur.description]
+            result = [_normalize_item_row(dict(zip(col_names, row))) for row in rows]
             conn.close()
             return result
-        items = await run_in_threadpool(_query)
+        items = await _safe_pg_query(_query)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         conn.row_factory = aiosqlite.Row
@@ -1061,8 +1129,8 @@ async def get_item(item_id: int):
             if not row:
                 conn.close()
                 return None
-            col_names = [d[0].lower() for d in cur.description]
-            item = dict(zip(col_names, row))
+            col_names = [d[0] for d in cur.description]
+            item = _normalize_item_row(dict(zip(col_names, row)))
             # Checkout history
             cur.execute("""
                 SELECT sample_title, sample_serial, sample_type,
@@ -1074,11 +1142,11 @@ async def get_item(item_id: int):
                 ORDER BY checkout_date DESC
             """, (item_id,))
             history_rows = cur.fetchall()
-            history_cols = [d[0].lower() for d in cur.description]
+            history_cols = [d[0] for d in cur.description]
             item['checkout_history'] = [dict(zip(history_cols, hr)) for hr in history_rows]
             conn.close()
             return item
-        item = await run_in_threadpool(_query)
+        item = await _safe_pg_query(_query)
         if item is None:
             raise HTTPException(status_code=404, detail="Item not found")
     else:
@@ -1194,7 +1262,7 @@ async def create_item(request: Request, payload: ItemIn):
             conn.commit()
             conn.close()
             return item_id
-        item_id = await run_in_threadpool(_query)
+        item_id = await _safe_pg_query(_query)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
@@ -1229,7 +1297,7 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
             row = cur.fetchone()
             conn.close()
             return row
-        existing = await run_in_threadpool(_check)
+        existing = await _safe_pg_query(_check)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
@@ -1269,7 +1337,7 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
             conn.commit()
             conn.close()
             return True
-        await run_in_threadpool(_query)
+        await _safe_pg_query(_query)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
@@ -1380,7 +1448,7 @@ async def create_checkout(request: Request, payload: CheckoutIn):
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             # Verify item exists and is IN_STOCK
-            cur.execute("SELECT Status, Title, SerialNum, SampleType, StorageLocationCode FROM inventory WHERE id = %s", (sample_id,))
+            cur.execute('SELECT status, "Title", "SerialNum", "SampleType", "StorageLocationCode" FROM inventory WHERE id = %s', (sample_id,))
             row = cur.fetchone()
             if not row:
                 conn.close()
@@ -1529,11 +1597,11 @@ async def get_checkout_records(sample_id: Optional[int] = None):
                     ORDER BY checkout_date DESC
                 """)
             rows = cur.fetchall()
-            col_names = [d[0].lower() for d in cur.description]
+            col_names = [d[0] for d in cur.description]
             result = [dict(zip(col_names, row)) for row in rows]
             conn.close()
             return result
-        records = await run_in_threadpool(_query)
+        records = await _safe_pg_query(_query)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         conn.row_factory = aiosqlite.Row
@@ -1576,18 +1644,18 @@ async def get_overdue_checkouts(request: Request):
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             cur.execute("""
-                SELECT i.id, i.Title as sample_title, i.StorageLocationCode as storage_location_code,
+                SELECT i.id, i."Title" as sample_title, i."StorageLocationCode" as storage_location_code,
                        cr.borrower_name, cr.borrower_department, cr.expected_return_date
                 FROM checkout_records cr
                 JOIN inventory i ON cr.sample_id = i.id
                 WHERE cr.checkout_status = 'OUT' AND cr.expected_return_date < %s
             """, (today,))
             rows = cur.fetchall()
-            col_names = [d[0].lower() for d in cur.description]
+            col_names = [d[0] for d in cur.description]
             result = [dict(zip(col_names, row)) for row in rows]
             conn.close()
             return result
-        overdue = await run_in_threadpool(_query)
+        overdue = await _safe_pg_query(_query)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         conn.row_factory = aiosqlite.Row
@@ -1625,19 +1693,19 @@ async def get_dashboard_stats(request: Request):
             cur.execute("SELECT COUNT(*) FROM inventory")
             total = cur.fetchone()[0]
             # In stock
-            cur.execute("SELECT COUNT(*) FROM inventory WHERE Status = 'IN_STOCK'")
+            cur.execute("SELECT COUNT(*) FROM inventory WHERE status = 'IN_STOCK'")
             in_stock = cur.fetchone()[0]
             # Checked out
-            cur.execute("SELECT COUNT(*) FROM inventory WHERE Status = 'CHECKED_OUT'")
+            cur.execute("SELECT COUNT(*) FROM inventory WHERE status = 'CHECKED_OUT'")
             checked_out = cur.fetchone()[0]
             # Overdue
             cur.execute("SELECT COUNT(*) FROM checkout_records WHERE checkout_status = 'OUT' AND expected_return_date < %s", (today,))
             overdue = cur.fetchone()[0]
             # Lost
-            cur.execute("SELECT COUNT(*) FROM inventory WHERE Status = 'LOST'")
+            cur.execute("SELECT COUNT(*) FROM inventory WHERE status = 'LOST'")
             lost = cur.fetchone()[0]
             # Scrapped
-            cur.execute("SELECT COUNT(*) FROM inventory WHERE Status = 'SCRAPPED'")
+            cur.execute("SELECT COUNT(*) FROM inventory WHERE status = 'SCRAPPED'")
             scrapped = cur.fetchone()[0]
             conn.close()
             return {
@@ -1648,7 +1716,7 @@ async def get_dashboard_stats(request: Request):
                 "lost": lost,
                 "scrapped": scrapped
             }
-        return await run_in_threadpool(_query)
+        return await _safe_pg_query(_query)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
@@ -1693,22 +1761,22 @@ async def get_rack_summary(request: Request):
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             cur.execute("""
-                SELECT StorageLocationCode as rack,
+                SELECT "StorageLocationCode" as rack,
                        COUNT(*) as total,
-                       SUM(CASE WHEN Status = 'IN_STOCK' THEN 1 ELSE 0 END) as in_stock,
-                       SUM(CASE WHEN Status = 'CHECKED_OUT' THEN 1 ELSE 0 END) as checked_out,
-                       SUM(CASE WHEN Status = 'LOST' THEN 1 ELSE 0 END) as lost,
-                       SUM(CASE WHEN Status = 'SCRAPPED' THEN 1 ELSE 0 END) as scrapped
+                       SUM(CASE WHEN status = 'IN_STOCK' THEN 1 ELSE 0 END) as in_stock,
+                       SUM(CASE WHEN status = 'CHECKED_OUT' THEN 1 ELSE 0 END) as checked_out,
+                       SUM(CASE WHEN status = 'LOST' THEN 1 ELSE 0 END) as lost,
+                       SUM(CASE WHEN status = 'SCRAPPED' THEN 1 ELSE 0 END) as scrapped
                 FROM inventory
-                GROUP BY StorageLocationCode
-                ORDER BY StorageLocationCode
+                GROUP BY "StorageLocationCode"
+                ORDER BY "StorageLocationCode"
             """)
             rows = cur.fetchall()
             col_names = [d[0] for d in cur.description]
             result = [dict(zip(col_names, row)) for row in rows]
             conn.close()
             return result
-        return await run_in_threadpool(_query)
+        return await _safe_pg_query(_query)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         conn.row_factory = aiosqlite.Row
@@ -1740,7 +1808,7 @@ async def get_dashboard_current_checkout(request: Request):
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             cur.execute("""
-                SELECT i.id, i.Title as sample_title, i.StorageLocationCode as storage_location_code,
+                SELECT i.id, i."Title" as sample_title, i."StorageLocationCode" as storage_location_code,
                        cr.borrower_name, cr.borrower_department, cr.checkout_date, cr.expected_return_date
                 FROM checkout_records cr
                 JOIN inventory i ON cr.sample_id = i.id
@@ -1752,7 +1820,7 @@ async def get_dashboard_current_checkout(request: Request):
             result = [dict(zip(col_names, row)) for row in rows]
             conn.close()
             return result
-        return await run_in_threadpool(_query)
+        return await _safe_pg_query(_query)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         conn.row_factory = aiosqlite.Row
@@ -1781,7 +1849,7 @@ async def get_dashboard_recent_returns(request: Request, limit: int = 10):
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             cur.execute("""
-                SELECT i.Title as sample_title, cr.borrower_name, cr.borrower_department,
+                SELECT i."Title" as sample_title, cr.borrower_name, cr.borrower_department,
                        cr.actual_return_date, cr.checkout_date
                 FROM checkout_records cr
                 JOIN inventory i ON cr.sample_id = i.id
@@ -1794,7 +1862,7 @@ async def get_dashboard_recent_returns(request: Request, limit: int = 10):
             result = [dict(zip(col_names, row)) for row in rows]
             conn.close()
             return result
-        return await run_in_threadpool(_query)
+        return await _safe_pg_query(_query)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         conn.row_factory = aiosqlite.Row
