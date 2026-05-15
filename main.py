@@ -82,8 +82,9 @@ PASSTHROUGH_KEYS = {
 def _normalize_item_row(row_dict):
     """Normalize a DB row dict to PascalCase keys matching ALL_FIELDS + Status.
     
-    Handles the case where PostgreSQL may return both lowercase and PascalCase
-    variants of the same column by preferring non-None values.
+    Railway PostgreSQL currently contains both legacy "Status" (PascalCase)
+    and live lowercase "status". Lowercase "status" is the source of truth
+    and must override stale legacy "Status" in normalized responses.
     """
     normalized = {}
     pass_through = {}
@@ -94,7 +95,7 @@ def _normalize_item_row(row_dict):
             continue
         mapped = _FIELD_NORMALIZE_MAP.get(key.lower() if key else "")
         if mapped:
-            if mapped not in normalized or (normalized.get(mapped) is None and value is not None):
+            if mapped not in normalized or (normalized.get(mapped) is None and value is not None) or mapped == "Status":
                 normalized[mapped] = value
         else:
             pass_through[key] = value
