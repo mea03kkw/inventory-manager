@@ -1250,7 +1250,10 @@ async def create_item(request: Request, payload: ItemIn):
 
     values.append(status)
 
-    field_sql = ", ".join([f'"{f}"' for f in field_list] + ["Status"])
+    if is_postgres():
+        field_sql = ", ".join([f'"{f}"' for f in field_list] + ["status"])
+    else:
+        field_sql = ", ".join([f'"{f}"' for f in field_list] + ["Status"])
     placeholder_sql = ", ".join(placeholders)
 
     database_url = _get_db_url()
@@ -1321,7 +1324,10 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
             values.append(val)
 
     if payload.Status is not None:
-        updates.append('Status = ' + ph)
+        if is_postgres():
+            updates.append('status = ' + ph)
+        else:
+            updates.append('Status = ' + ph)
         values.append(payload.Status)
 
     if not updates:
@@ -1381,7 +1387,7 @@ async def delete_item(request: Request, item_id: int):
             conn.commit()
             conn.close()
             return True
-        await run_in_threadpool(_check_and_delete)
+        await _safe_pg_query(_check_and_delete)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
@@ -1472,11 +1478,11 @@ async def create_checkout(request: Request, payload: CheckoutIn):
                   payload.expected_return_date, payload.checkout_remarks, title, serial, stype, storage_loc))
             checkout_id = cur.lastrowid if hasattr(cur, 'lastrowid') else cur.fetchone()[0] if not cur.description else None
             # Update inventory status
-            cur.execute("UPDATE inventory SET Status = 'CHECKED_OUT' WHERE id = %s", (sample_id,))
+            cur.execute("UPDATE inventory SET status = 'CHECKED_OUT' WHERE id = %s", (sample_id,))
             conn.commit()
             conn.close()
             return True
-        await run_in_threadpool(_checkout)
+        await _safe_pg_query(_checkout)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
@@ -1538,11 +1544,11 @@ async def return_checkout(request: Request, record_id: int, payload: CheckoutRet
                 WHERE id = %s
             """, (payload.actual_return_date, payload.return_remarks, record_id))
             # Update inventory status
-            cur.execute("UPDATE inventory SET Status = 'IN_STOCK' WHERE id = %s", (sample_id,))
+            cur.execute("UPDATE inventory SET status = 'IN_STOCK' WHERE id = %s", (sample_id,))
             conn.commit()
             conn.close()
             return True
-        await run_in_threadpool(_return)
+        await _safe_pg_query(_return)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
