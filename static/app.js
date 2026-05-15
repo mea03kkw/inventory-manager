@@ -349,7 +349,7 @@ function renderItems() {
     }
 
     tbody.innerHTML = allItems.map(item => {
-        const status = normalizeStatus(item.Status);
+        const status = normalizeStatus(item.status || item.Status);
         const badgeClass = getStatusBadgeClass(status);
 
         const currentBorrower = item.current_borrower_name;
@@ -588,7 +588,7 @@ async function openCheckoutModal(sampleId) {
     const item = allItems.find(i => String(i.id) === String(sampleId));
     if (!item) return;
     
-    const status = normalizeStatus(item.Status);
+    const status = normalizeStatus(item.status || item.Status);
     if (status !== 'IN_STOCK') {
         alert('This sample cannot be checked out (status: ' + formatStatus(status) + ')');
         return;
@@ -667,7 +667,7 @@ async function openReturnModal(sampleId) {
     const item = allItems.find(i => String(i.id) === String(sampleId));
     if (!item) return;
     
-    const status = normalizeStatus(item.Status);
+    const status = normalizeStatus(item.status || item.Status);
     if (status !== 'CHECKED_OUT') {
         alert('This sample is not currently checked out');
         return;
@@ -752,7 +752,7 @@ async function viewItem(id) {
         }
         const item = await response.json();
         
-        const status = normalizeStatus(item.Status);
+        const status = normalizeStatus(item.status || item.Status);
         
         let historyHtml = '';
         if (item.checkout_history && item.checkout_history.length > 0) {
