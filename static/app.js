@@ -334,7 +334,7 @@ function renderItems() {
     const tbody = document.getElementById('inventory');
 
     if (!allItems || allItems.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#999;">No samples found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#999;">No samples found</td></tr>';
         return;
     }
 
@@ -350,33 +350,33 @@ function renderItems() {
 
     tbody.innerHTML = allItems.map(item => {
         const status = normalizeStatus(item.status || item.Status);
-        const badgeClass = getStatusBadgeClass(status);
-
-        const currentBorrower = item.current_borrower_name;
-        const borrowerDisplay = currentBorrower ? currentBorrower : '-';
+        const currentBorrower = item.current_borrower_name || '';
         const expectedDisplay = item.current_expected_return_date || '-';
+
+        const hasBorrower = String(currentBorrower).trim() !== '';
+        const statusBadgeHtml = hasBorrower
+            ? `<span class="status-badge status-out">🔴 OUT (${escapeHtml(currentBorrower)})</span>`
+            : `<span class="status-badge status-in-stock">🟢 IN STOCK</span>`;
 
         const showCheckout = showActions && status === 'IN_STOCK';
         const showReturn = showActions && status === 'CHECKED_OUT';
 
-        const actionsHtml = showActions ? `
-                  <td>
-                      ${showCheckout ? `<button class="checkout-btn" onclick="event.stopPropagation(); openCheckoutModal(${item.id})">Checkout</button>` : ''}
-                      ${showReturn ? `<button class="return-btn" onclick="event.stopPropagation(); openReturnModal(${item.id})">Return</button>` : ''}
-                  </td>` : '';
-
         return `
-              <tr onclick="viewItem(${item.id})" style="cursor:pointer;">
-                  <td>${escapeHtml(item.Title || '')}</td>
-                  <td>${escapeHtml(item.SerialNum || '')}</td>
-                  <td>${escapeHtml(item.SampleType || '')}</td>
-                  <td>${escapeHtml(item.StorageLocationCode || '')}</td>
-                  <td><span class="status-badge ${badgeClass}">${formatStatus(status)}</span></td>
-                  <td>${escapeHtml(borrowerDisplay)}</td>
-                  <td>${escapeHtml(expectedDisplay)}</td>
-                  ${actionsHtml}
-              </tr>
-            `;
+            <tr onclick="viewItem(${item.id})" style="cursor:pointer;">
+                <td>${escapeHtml(item.Title || '')}</td>
+                <td>${escapeHtml(item.SerialNum || '')}</td>
+                <td>${escapeHtml(item.SampleType || '')}</td>
+                <td>${escapeHtml(item.StorageLocationCode || '')}</td>
+                <td>${statusBadgeHtml}</td>
+                <td>${escapeHtml(expectedDisplay)}</td>
+                ${showActions ? `
+                    <td>
+                        ${showCheckout ? `<button class="checkout-btn" onclick="openCheckoutModal(${item.id})">Checkout</button>` : ''}
+                        ${showReturn ? `<button class="return-btn" onclick="openReturnModal(${item.id})">Return</button>` : ''}
+                    </td>
+                ` : ''}
+            </tr>
+        `;
     }).join('');
 }
 

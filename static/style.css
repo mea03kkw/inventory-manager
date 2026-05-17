@@ -526,6 +526,16 @@ body {
     color: #546e7a;
 }
 
+.status-out {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.status-in-stock {
+    background: #dcfce7;
+    color: #166534;
+}
+
 /* Main Table */
 .table-container {
     overflow-x: auto;
