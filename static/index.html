@@ -114,9 +114,12 @@
                 <option value="">All Racks</option>
             </select>
             <button class="add-button" data-admin-only onclick="showAddForm()">+ Add Sample</button>
+            <button class="export-csv-btn" data-admin-only onclick="exportSamplesCsv()">Export CSV</button>
         </div>
 
-        <div class="table-container">
+        <div id="inventoryCards" class="inventory-cards"></div>
+
+        <div class="table-container desktop-table-container">
             <table>
                 <thead>
                     <tr>

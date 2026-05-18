@@ -125,6 +125,8 @@ async function submitLogin(e) {
     e.preventDefault();
     const username = document.getElementById('loginUsername').value.trim();
     const password = document.getElementById('loginPassword').value;
+    const submitBtn = document.querySelector('#loginModal .form-actions button[type="submit"]');
+    setButtonPending(submitBtn, true, 'Logging in...');
     try {
         const response = await fetch(API.login(), {
             method: 'POST',
@@ -145,9 +147,10 @@ async function submitLogin(e) {
             showSection('samples');
         }
         closeModal();
-        alert('Logged in successfully');
+        showToast('Logged in successfully', 'success');
     } catch (err) {
-        alert('Error: ' + err.message);
+        setButtonPending(submitBtn, false);
+        showToast('Error: ' + err.message, 'error');
     }
 }
 
@@ -194,9 +197,9 @@ async function submitRegister(e) {
         document.getElementById('loginUsername').value = username;
         document.getElementById('loginPassword').value = '';
         openModal('loginModal');
-        alert('Account created successfully. Please log in.');
+        showToast('Account created successfully. Please log in.', 'success');
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     }
 }
 
@@ -207,9 +210,9 @@ async function logout() {
         updateAuthUI();
         closeMenu();
         loadItems();
-        alert('Logged out');
+        showToast('Logged out', 'success');
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     }
 }
 
@@ -265,6 +268,74 @@ function normalizeStatus(s) {
     return s;
 }
 
+function getDisplayStatusText(item) {
+    const status = normalizeStatus(item.status || item.Status);
+    if (status === 'CHECKED_OUT') {
+        const borrower = (item.current_borrower_name || '').trim();
+        return borrower ? 'Out (' + escapeHtml(borrower) + ')' : 'Out (unknown)';
+    }
+    if (status === 'IN_STOCK') return 'In';
+    if (status === 'LOST') return 'Lost';
+    if (status === 'SCRAPPED') return 'Scrapped';
+    return 'In';
+}
+
+function getDisplayStatusClass(item) {
+    const status = normalizeStatus(item.status || item.Status);
+    if (status === 'CHECKED_OUT') return 'status-out';
+    if (status === 'IN_STOCK') return 'status-in';
+    if (status === 'LOST') return 'status-lost';
+    if (status === 'SCRAPPED') return 'status-scrapped';
+    return 'status-in';
+}
+
+function getPrimaryActionHtml(item, showActions) {
+    if (!showActions) return '';
+    const status = normalizeStatus(item.status || item.Status);
+    if (status === 'IN_STOCK') {
+        return '<button class="checkout-btn" onclick="event.stopPropagation();openCheckoutModal(' + item.id + ')">Checkout</button>';
+    }
+    if (status === 'CHECKED_OUT') {
+        return '<button class="return-btn" onclick="event.stopPropagation();openReturnModal(' + item.id + ')">Return</button>';
+    }
+    return '';
+}
+
+// ============================================================
+// Toast / Feedback Helpers
+// ============================================================
+
+function showToast(message, type) {
+    var container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    var toast = document.createElement('div');
+    toast.className = 'toast toast-' + (type === 'error' ? 'error' : 'success');
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(function() {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 3000);
+}
+
+function setButtonPending(button, isPending, pendingLabel) {
+    if (!button) return;
+    if (isPending) {
+        button._originalLabel = button.textContent;
+        button.disabled = true;
+        button.textContent = pendingLabel || 'Processing...';
+        button.classList.add('btn-pending');
+    } else {
+        button.disabled = false;
+        button.textContent = button._originalLabel || button.textContent;
+        button.classList.remove('btn-pending');
+    }
+}
+
 // ============================================================
 // Modal Functions
 // ============================================================
@@ -278,8 +349,20 @@ function openModal(id) {
 
 function closeModal() {
     document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+    resetModalButtons();
     resetCheckoutForm();
     resetReturnForm();
+}
+
+function resetModalButtons() {
+    document.querySelectorAll('.modal .btn-pending').forEach(function(btn) {
+        btn.disabled = false;
+        if (btn._originalLabel) {
+            btn.textContent = btn._originalLabel;
+            delete btn._originalLabel;
+        }
+        btn.classList.remove('btn-pending');
+    });
 }
 
 function resetCheckoutForm() {
@@ -332,9 +415,11 @@ async function loadItems() {
 
 function renderItems() {
     const tbody = document.getElementById('inventory');
+    const cardsContainer = document.getElementById('inventoryCards');
 
     if (!allItems || allItems.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#999;">No samples found</td></tr>';
+        if (cardsContainer) cardsContainer.innerHTML = '<div class="inventory-empty">No samples found</div>';
         return;
     }
 
@@ -348,36 +433,43 @@ function renderItems() {
         actionsHeader.style.display = showActions ? '' : 'none';
     }
 
-    tbody.innerHTML = allItems.map(item => {
-        const status = normalizeStatus(item.status || item.Status);
-        const currentBorrower = item.current_borrower_name || '';
-        const expectedDisplay = item.current_expected_return_date || '-';
-
-        const hasBorrower = String(currentBorrower).trim() !== '';
-        const statusBadgeHtml = hasBorrower
-            ? `<span class="status-badge status-out">🔴 OUT (${escapeHtml(currentBorrower)})</span>`
-            : `<span class="status-badge status-in-stock">🟢 IN STOCK</span>`;
-
-        const showCheckout = showActions && status === 'IN_STOCK';
-        const showReturn = showActions && status === 'CHECKED_OUT';
-
-        return `
-            <tr onclick="viewItem(${item.id})" style="cursor:pointer;">
-                <td>${escapeHtml(item.Title || '')}</td>
-                <td>${escapeHtml(item.SerialNum || '')}</td>
-                <td>${escapeHtml(item.SampleType || '')}</td>
-                <td>${escapeHtml(item.StorageLocationCode || '')}</td>
-                <td>${statusBadgeHtml}</td>
-                <td>${escapeHtml(expectedDisplay)}</td>
-                ${showActions ? `
-                    <td>
-                        ${showCheckout ? `<button class="checkout-btn" onclick="openCheckoutModal(${item.id})">Checkout</button>` : ''}
-                        ${showReturn ? `<button class="return-btn" onclick="openReturnModal(${item.id})">Return</button>` : ''}
-                    </td>
-                ` : ''}
-            </tr>
-        `;
+    // --- Desktop table rows ---
+    tbody.innerHTML = allItems.map(function(item) {
+        var actionCellHtml = '';
+        if (showActions) {
+            var status = normalizeStatus(item.status || item.Status);
+            if (status === 'IN_STOCK') {
+                actionCellHtml = '<button class="checkout-btn" onclick="event.stopPropagation();openCheckoutModal(' + item.id + ')">Checkout</button>';
+            } else if (status === 'CHECKED_OUT') {
+                actionCellHtml = '<button class="return-btn" onclick="event.stopPropagation();openReturnModal(' + item.id + ')">Return</button>';
+            }
+        }
+        var statusText = getDisplayStatusText(item);
+        var statusClass = getDisplayStatusClass(item);
+        var expectedDisplay = item.current_expected_return_date || '-';
+        return '\n            <tr onclick="viewItem(' + item.id + ')" style="cursor:pointer;">\n                <td>' + escapeHtml(item.Title || '') + '</td>\n                <td>' + escapeHtml(item.SerialNum || '') + '</td>\n                <td>' + escapeHtml(item.SampleType || '') + '</td>\n                <td>' + escapeHtml(item.StorageLocationCode || '') + '</td>\n                <td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>\n                <td>' + escapeHtml(expectedDisplay) + '</td>\n                <td>' + actionCellHtml + '</td>\n            </tr>\n        ';
     }).join('');
+
+    // --- Mobile cards ---
+    if (cardsContainer) {
+        cardsContainer.innerHTML = allItems.map(item => {
+            const dueDate = item.current_expected_return_date;
+            const status = normalizeStatus(item.status || item.Status);
+            var metaParts = [];
+            if (item.StorageLocationCode) metaParts.push(item.StorageLocationCode);
+            if (item.SampleType) metaParts.push(item.SampleType);
+            if (status === 'CHECKED_OUT' && dueDate) metaParts.push('Due ' + dueDate);
+            var metaHtml = metaParts.length > 0
+                ? '<div class="inventory-card__meta">' + metaParts.map(function(p) { return '<span class="inventory-card__meta-item">' + escapeHtml(p) + '</span>'; }).join('<span class="inventory-card__meta-sep">·</span>') + '</div>'
+                : '';
+
+            var statusText = getDisplayStatusText(item);
+            var statusClass = getDisplayStatusClass(item);
+            var actionHtml = getPrimaryActionHtml(item, showActions);
+
+            return '\n<div class="inventory-card" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__identity">\n    <div class="inventory-card__title">' + escapeHtml(item.Title || '') + '</div>\n    <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n  </div>\n  <div class="inventory-card__status-row">\n    <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n    ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n  </div>\n  ' + metaHtml + '\n</div>';
+        }).join('');
+    }
 }
 
 function escapeHtml(str) {
@@ -402,6 +494,28 @@ function applyFilters() {
     loadItems();
 }
 
+function exportSamplesCsv() {
+    if (!currentUser || !currentUser.is_admin) return;
+    var search = document.getElementById('searchBox').value;
+    var status = document.getElementById('statusFilter').value;
+    var rack = document.getElementById('rackFilter').value;
+    var params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (status) params.set('status', status);
+    if (rack) params.set('rack', rack);
+    var url = '/api/export/items.csv?' + params.toString();
+    try {
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = '';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } catch (err) {
+        showToast('Export failed: ' + err.message, 'error');
+    }
+}
+
 // ============================================================
 // Add/Edit Form
 // ============================================================
@@ -409,6 +523,73 @@ function applyFilters() {
 // ============================================================
 // Create / Edit / Delete
 // ============================================================
+
+const REQUIRED_FIELDS = ['Title', 'SerialNum', 'SampleType', 'StorageLocationCode'];
+
+const FIELD_LABELS = {
+    Title: 'Title',
+    SerialNum: 'Serial Number',
+    SampleType: 'Sample Type',
+    StorageLocationCode: 'Storage Rack'
+};
+
+function clearFieldValidation() {
+    document.querySelectorAll('.form-group.is-invalid').forEach(function(el) {
+        el.classList.remove('is-invalid');
+    });
+    document.querySelectorAll('.field-error').forEach(function(el) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+    });
+}
+
+function markFieldInvalid(fieldId, message) {
+    var el = document.getElementById(fieldId);
+    if (!el) return;
+    var formGroup = el.closest('.form-group');
+    if (formGroup) formGroup.classList.add('is-invalid');
+    var existingErr = formGroup ? formGroup.querySelector('.field-error') : null;
+    if (!existingErr) {
+        var errEl = document.createElement('div');
+        errEl.className = 'field-error';
+        errEl.textContent = message;
+        if (formGroup) formGroup.appendChild(errEl);
+    }
+}
+
+function validateItemForm() {
+    clearFieldValidation();
+    var firstInvalid = null;
+    for (var i = 0; i < REQUIRED_FIELDS.length; i++) {
+        var f = REQUIRED_FIELDS[i];
+        var el = document.getElementById(f);
+        var val = el ? (el.value || '').trim() : '';
+        if (!val) {
+            var label = FIELD_LABELS[f] || f;
+            markFieldInvalid(f, label + ' is required');
+            if (!firstInvalid) firstInvalid = el;
+        }
+    }
+    if (firstInvalid) {
+        firstInvalid.focus();
+        return false;
+    }
+    return true;
+}
+
+function normalizeItemFormData() {
+    // Trim all text fields and normalize UnitCount to string
+    FIELD_LIST.forEach(function(f) {
+        var el = document.getElementById(f);
+        if (el && el.type !== 'select-one') {
+            el.value = (el.value || '').trim();
+        }
+    });
+    // Ensure UnitCount is preserved as string-compatible
+    var ucEl = document.getElementById('UnitCount');
+    if (ucEl && ucEl.value !== '') {
+        ucEl.value = String(ucEl.value);
+    }
+}
 
 const FIELD_LIST = [
     "Title", "SerialNum", "SampleType", "ProductName", "Brand", "Model",
@@ -418,6 +599,7 @@ const FIELD_LIST = [
 ];
 
 function clearForm() {
+    clearFieldValidation();
     FIELD_LIST.forEach(f => {
         const el = document.getElementById(f);
         if (el) {
@@ -444,7 +626,7 @@ function fillForm(item) {
 
 function showAddForm() {
     if (!currentUser || !currentUser.is_admin) {
-        alert('Only administrators can add or edit samples.');
+        showToast('Only administrators can add or edit samples.', 'error');
         return;
     }
     // Clear form and set to add mode
@@ -463,7 +645,7 @@ function showAddForm() {
 
 function startEdit(id) {
     if (!currentUser || !currentUser.is_admin) {
-        alert('Only administrators can edit samples.');
+        showToast('Only administrators can edit samples.', 'error');
         return;
     }
     const item = allItems.find(i => String(i.id) === String(id));
@@ -492,8 +674,15 @@ function cancelEdit() {
 
 async function submitItemForm(e) {
     e.preventDefault();
-    const data = {};
     
+    clearFieldValidation();
+    normalizeItemFormData();
+    if (!validateItemForm()) return;
+    
+    const submitBtn = document.getElementById('submitBtn');
+    setButtonPending(submitBtn, true, 'Saving...');
+    
+    const data = {};
     FIELD_LIST.forEach(f => {
         const el = document.getElementById(f);
         if (el) {
@@ -514,7 +703,6 @@ async function submitItemForm(e) {
     
     try {
         if (editingId === null) {
-            // Create
             const response = await fetch(API.create(), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -524,9 +712,8 @@ async function submitItemForm(e) {
                 const err = await response.json();
                 throw new Error(err.detail || 'Failed to create sample');
             }
+            showToast('Sample created successfully', 'success');
         } else {
-            // Update
-            console.log('Updating item id:', editingId, 'data:', data);
             const response = await fetch(API.update(editingId), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -536,6 +723,7 @@ async function submitItemForm(e) {
                 const err = await response.json();
                 throw new Error(err.detail || 'Failed to update sample');
             }
+            showToast('Sample updated successfully', 'success');
             editingId = null;
         }
         
@@ -543,17 +731,20 @@ async function submitItemForm(e) {
         await loadItems();
     } catch (err) {
         console.error(err);
-        alert('Error: ' + err.message);
+        setButtonPending(submitBtn, false);
+        showToast('Save failed: ' + err.message, 'error');
     }
 }
 
 async function deleteSample(id) {
     if (!currentUser || !currentUser.is_admin) {
-        alert('Only administrators can delete samples.');
+        showToast('Only administrators can delete samples.', 'error');
         return;
     }
     if (!confirm('Are you sure you want to delete this sample?')) return;
     try {
+        var delBtn = document.querySelector('.detail-modal .delete');
+        if (delBtn) setButtonPending(delBtn, true, 'Deleting...');
         const response = await fetch(API.delete(id), { method: 'DELETE' });
         if (!response.ok) {
             let errorMsg = 'Failed to delete';
@@ -570,9 +761,12 @@ async function deleteSample(id) {
             }
             throw new Error(errorMsg);
         }
+        closeModal();
         await loadItems();
+        showToast('Deleted successfully', 'success');
     } catch (err) {
-        alert('Error: ' + err.message);
+        if (delBtn) setButtonPending(delBtn, false);
+        showToast('Delete failed: ' + err.message, 'error');
     }
 }
 
@@ -590,7 +784,7 @@ async function openCheckoutModal(sampleId) {
     
     const status = normalizeStatus(item.status || item.Status);
     if (status !== 'IN_STOCK') {
-        alert('This sample cannot be checked out (status: ' + formatStatus(status) + ')');
+        showToast('This sample cannot be checked out (status: ' + formatStatus(status) + ')', 'error');
         return;
     }
     
@@ -629,6 +823,8 @@ async function submitCheckout(e) {
     e.preventDefault();
     
     const sampleId = document.getElementById('checkoutSampleId').value;
+    const submitBtn = document.querySelector('#checkoutModal .form-actions button[type="submit"]');
+    setButtonPending(submitBtn, true, 'Checking out...');
     
     const data = {
         sample_id: parseInt(sampleId),
@@ -652,10 +848,11 @@ async function submitCheckout(e) {
         
         closeModal();
         await loadItems();
-        alert('Sample checked out successfully');
+        showToast('Checked out successfully', 'success');
     } catch (err) {
         console.error(err);
-        alert('Error: ' + err.message);
+        setButtonPending(submitBtn, false);
+        showToast('Checkout failed: ' + err.message, 'error');
     }
 }
 
@@ -669,7 +866,7 @@ async function openReturnModal(sampleId) {
     
     const status = normalizeStatus(item.status || item.Status);
     if (status !== 'CHECKED_OUT') {
-        alert('This sample is not currently checked out');
+        showToast('This sample is not currently checked out', 'error');
         return;
     }
     
@@ -680,7 +877,7 @@ async function openReturnModal(sampleId) {
         const active = records.find(r => r.checkout_status === 'OUT');
         
         if (!active) {
-            alert('No active checkout record found');
+            showToast('No active checkout record found', 'error');
             return;
         }
         
@@ -705,7 +902,7 @@ async function openReturnModal(sampleId) {
         openModal('returnModal');
     } catch (err) {
         console.error(err);
-        alert('Error: Could not load checkout record');
+        showToast('Error: Could not load checkout record', 'error');
     }
 }
 
@@ -713,6 +910,9 @@ async function submitReturn(e) {
     e.preventDefault();
     
     const recordId = document.getElementById('returnRecordId').value;
+    const submitBtn = document.querySelector('#returnModal .form-actions button[type="submit"]');
+    setButtonPending(submitBtn, true, 'Returning...');
+    
     const data = {
         actual_return_date: document.getElementById('actualReturnDate').value,
         return_remarks: document.getElementById('returnRemarks').value.trim()
@@ -732,10 +932,11 @@ async function submitReturn(e) {
         
         closeModal();
         await loadItems();
-        alert('Sample returned successfully');
+        showToast('Returned successfully', 'success');
     } catch (err) {
         console.error(err);
-        alert('Error: ' + err.message);
+        setButtonPending(submitBtn, false);
+        showToast('Return failed: ' + err.message, 'error');
     }
 }
 
@@ -895,7 +1096,7 @@ async function viewItem(id) {
         openModal('detailModal');
     } catch (err) {
         console.error(err);
-        alert('Error loading details');
+        showToast('Error loading details', 'error');
     }
 }
 

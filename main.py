@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 from fastapi import FastAPI, Request, HTTPException, Depends
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -18,6 +18,8 @@ try:
     import psycopg2
 except ImportError:
     psycopg2 = None
+import csv
+import io
 
 
 # ============================================================================
@@ -1099,6 +1101,128 @@ async def list_items(
 
     return items
 
+
+@app.get("/api/export/items.csv")
+async def export_items_csv(
+    request: Request,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    rack: Optional[str] = None,
+):
+    """Admin-only CSV export of filtered sample list."""
+    user = await require_admin(request)
+    database_url = _get_db_url()
+
+    if is_postgres():
+        def _fetch():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            sql = """
+                SELECT i.*,
+                       cr.borrower_name AS current_borrower_name,
+                       cr.expected_return_date AS current_expected_return_date
+                FROM inventory i
+                LEFT JOIN checkout_records cr
+                  ON cr.id = (
+                      SELECT MAX(cr2.id)
+                      FROM checkout_records cr2
+                      WHERE cr2.sample_id = i.id
+                        AND cr2.checkout_status = 'OUT'
+                  )
+                WHERE 1=1
+            """
+            params = []
+            if search:
+                sql += ' AND (i."Title" ILIKE %s OR i."SerialNum" ILIKE %s OR i."SampleType" ILIKE %s)'
+                like = f"%{search}%"
+                params.extend([like, like, like])
+            if status:
+                sql += " AND i.status = %s"
+                params.append(status)
+            if rack:
+                sql += ' AND i."StorageLocationCode" = %s'
+                params.append(rack)
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+            col_names = [d[0] for d in cur.description]
+            result = [_normalize_item_row(dict(zip(col_names, row))) for row in rows]
+            conn.close()
+            return result
+        items = await run_in_threadpool(_fetch)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        conn.row_factory = aiosqlite.Row
+        cur = await conn.cursor()
+        sql = """
+            SELECT i.*,
+                   cr.borrower_name AS current_borrower_name,
+                   cr.expected_return_date AS current_expected_return_date
+            FROM inventory i
+            LEFT JOIN checkout_records cr
+              ON cr.id = (
+                  SELECT MAX(cr2.id)
+                  FROM checkout_records cr2
+                  WHERE cr2.sample_id = i.id
+                    AND cr2.checkout_status = 'OUT'
+              )
+            WHERE 1=1
+        """
+        params = []
+        if search:
+            sql += " AND (i.Title LIKE ? OR i.SerialNum LIKE ? OR i.SampleType LIKE ?)"
+            like = f"%{search}%"
+            params.extend([like, like, like])
+        if status:
+            sql += " AND i.Status = ?"
+            params.append(status)
+        if rack:
+            sql += " AND i.StorageLocationCode = ?"
+            params.append(rack)
+        await cur.execute(sql, params)
+        rows = await cur.fetchall()
+        items = [dict(row) for row in rows]
+        await conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Title", "SerialNum", "SampleType", "StorageLocationCode", "Status",
+        "CurrentBorrowerName", "CurrentExpectedReturnDate", "Category",
+        "SubCategory", "Brand", "Model", "DepartmentOwner", "Condition",
+        "DateReceived", "UnitCount", "UnitMeasure", "Notes"
+    ])
+    for item in items:
+        status_val = item.get("status") or item.get("Status") or "IN_STOCK"
+        writer.writerow([
+            item.get("Title") or "",
+            item.get("SerialNum") or "",
+            item.get("SampleType") or "",
+            item.get("StorageLocationCode") or "",
+            status_val,
+            item.get("current_borrower_name") or "",
+            item.get("current_expected_return_date") or "",
+            item.get("Category") or "",
+            item.get("SubCategory") or "",
+            item.get("Brand") or "",
+            item.get("Model") or "",
+            item.get("DepartmentOwner") or "",
+            item.get("Condition") or "",
+            item.get("DateReceived") or "",
+            item.get("UnitCount") or "",
+            item.get("UnitMeasure") or "",
+            item.get("Notes") or "",
+        ])
+
+    csv_content = output.getvalue()
+    output.close()
+
+    from datetime import date
+    today = date.today().strftime("%Y-%m-%d")
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=samples_export_{today}.csv"}
+    )
 
 @app.get("/api/items/{item_id}")
 async def get_item(item_id: int):
