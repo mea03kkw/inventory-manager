@@ -19,6 +19,7 @@ const API = {
     // Checkout
     checkout: () => `${API_BASE}/checkout`,
     checkoutReturn: (id) => `${API_BASE}/checkout/${id}/return`,
+    itemReturn: (id) => `${API_BASE}/items/${id}/return`,
     checkoutRecords: (id) => `${API_BASE}/checkout/records?sample_id=${id}`,
     overdue: () => `${API_BASE}/checkout/overdue`,
     // Dashboard
@@ -252,6 +253,8 @@ function getStatusBadgeClass(status) {
     const cls = {
         'IN_STOCK': 'status-IN_STOCK',
         'CHECKED_OUT': 'status-CHECKED_OUT',
+        'OUT': 'status-CHECKED_OUT',
+        'RETURNED': 'status-IN_STOCK',
         'LOST': 'status-LOST',
         'SCRAPPED': 'status-SCRAPPED'
     };
@@ -268,37 +271,61 @@ function normalizeStatus(s) {
     return s;
 }
 
-function getDisplayStatusText(item) {
-    const status = normalizeStatus(item.status || item.Status);
-    if (status === 'CHECKED_OUT') {
-        const borrower = (item.current_borrower_name || '').trim();
-        return borrower ? 'Out (' + escapeHtml(borrower) + ')' : 'Out (unknown)';
+function getTotalQty(item) {
+    if (item.UnitCount !== undefined && item.UnitCount !== null) {
+        var uc = parseInt(item.UnitCount, 10);
+        if (!isNaN(uc) && uc > 0) return uc;
     }
-    if (status === 'IN_STOCK') return 'In';
+    if (item.quantity !== undefined && item.quantity !== null) {
+        var q = parseInt(item.quantity, 10);
+        if (!isNaN(q) && q > 0) return q;
+    }
+    return 1;
+}
+
+function getAvailableQty(item) {
+    if (item.available_quantity !== undefined && item.available_quantity !== null) {
+        var aq = parseInt(item.available_quantity, 10);
+        if (!isNaN(aq)) return aq;
+    }
+    return getTotalQty(item);
+}
+
+function getDisplayStatusText(item) {
+    var status = normalizeStatus(item.status || item.Status);
     if (status === 'LOST') return 'Lost';
     if (status === 'SCRAPPED') return 'Scrapped';
-    return 'In';
+    var avail = getAvailableQty(item);
+    var total = getTotalQty(item);
+    if (avail <= 0) return 'Out (' + avail + '/' + total + ')';
+    if (avail < total) return 'Partial (' + avail + '/' + total + ')';
+    return 'Full (' + avail + '/' + total + ')';
 }
 
 function getDisplayStatusClass(item) {
-    const status = normalizeStatus(item.status || item.Status);
-    if (status === 'CHECKED_OUT') return 'status-out';
-    if (status === 'IN_STOCK') return 'status-in';
+    var status = normalizeStatus(item.status || item.Status);
     if (status === 'LOST') return 'status-lost';
     if (status === 'SCRAPPED') return 'status-scrapped';
-    return 'status-in';
+    var avail = getAvailableQty(item);
+    if (avail <= 0) return 'status-out';
+    if (avail < getTotalQty(item)) return 'status-partial';
+    return 'status-full';
 }
 
 function getPrimaryActionHtml(item, showActions) {
     if (!showActions) return '';
-    const status = normalizeStatus(item.status || item.Status);
-    if (status === 'IN_STOCK') {
-        return '<button class="checkout-btn" onclick="event.stopPropagation();openCheckoutModal(' + item.id + ')">Checkout</button>';
+    var status = normalizeStatus(item.status || item.Status);
+    if (status === 'LOST' || status === 'SCRAPPED') return '';
+    var avail = getAvailableQty(item);
+    var total = getTotalQty(item);
+    var buttons = '';
+    if (avail > 0) {
+        buttons += '<button class="checkout-btn" onclick="event.stopPropagation();openCheckoutModal(' + item.id + ')">Checkout</button>';
     }
-    if (status === 'CHECKED_OUT') {
-        return '<button class="return-btn" onclick="event.stopPropagation();openReturnModal(' + item.id + ')">Return</button>';
+    if (avail < total) {
+        buttons += '<button class="return-btn" onclick="event.stopPropagation();openReturnModal(' + item.id + ')">Return</button>';
     }
-    return '';
+    return buttons;
 }
 
 // ============================================================
@@ -373,6 +400,10 @@ function resetCheckoutForm() {
     document.getElementById('expectedReturnDate').value = '';
     document.getElementById('checkoutRemarks').value = '';
     document.getElementById('checkoutSampleInfo').innerHTML = '';
+    document.getElementById('checkoutQuantity').value = 1;
+    document.getElementById('checkoutQuantity').max = 99999;
+    document.getElementById('checkoutAvailQty').textContent = '0';
+    document.getElementById('checkoutTotalQty').textContent = '0';
 }
 
 function resetReturnForm() {
@@ -380,6 +411,10 @@ function resetReturnForm() {
     document.getElementById('actualReturnDate').value = '';
     document.getElementById('returnRemarks').value = '';
     document.getElementById('returnSampleInfo').innerHTML = '';
+    document.getElementById('returnQuantity').value = 1;
+    document.getElementById('returnQuantity').min = 1;
+    document.getElementById('returnQuantity').max = 1;
+    document.getElementById('returnQuantity').readOnly = false;
 }
 
 // ============================================================
@@ -427,38 +462,39 @@ function renderItems() {
     const isAdmin = isLoggedIn && currentUser.is_admin;
     const showActions = isLoggedIn && !isAdmin;
 
-    // Show/hide Actions column header
     const actionsHeader = document.getElementById('actionsHeader');
     if (actionsHeader) {
         actionsHeader.style.display = showActions ? '' : 'none';
     }
 
-    // --- Desktop table rows ---
     tbody.innerHTML = allItems.map(function(item) {
         var actionCellHtml = '';
         if (showActions) {
             var status = normalizeStatus(item.status || item.Status);
-            if (status === 'IN_STOCK') {
-                actionCellHtml = '<button class="checkout-btn" onclick="event.stopPropagation();openCheckoutModal(' + item.id + ')">Checkout</button>';
-            } else if (status === 'CHECKED_OUT') {
-                actionCellHtml = '<button class="return-btn" onclick="event.stopPropagation();openReturnModal(' + item.id + ')">Return</button>';
+            if (status !== 'LOST' && status !== 'SCRAPPED') {
+                var avail = getAvailableQty(item);
+                var total = getTotalQty(item);
+                var btns = [];
+                if (avail > 0) {
+                    btns.push('<button class="checkout-btn" onclick="event.stopPropagation();openCheckoutModal(' + item.id + ')">Checkout</button>');
+                }
+                if (avail < total) {
+                    btns.push('<button class="return-btn" onclick="event.stopPropagation();openReturnModal(' + item.id + ')">Return</button>');
+                }
+                actionCellHtml = btns.join(' ');
             }
         }
         var statusText = getDisplayStatusText(item);
         var statusClass = getDisplayStatusClass(item);
-        var expectedDisplay = item.current_expected_return_date || '-';
-        return '\n            <tr onclick="viewItem(' + item.id + ')" style="cursor:pointer;">\n                <td>' + escapeHtml(item.Title || '') + '</td>\n                <td>' + escapeHtml(item.SerialNum || '') + '</td>\n                <td>' + escapeHtml(item.SampleType || '') + '</td>\n                <td>' + escapeHtml(item.StorageLocationCode || '') + '</td>\n                <td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>\n                <td>' + escapeHtml(expectedDisplay) + '</td>\n                <td>' + actionCellHtml + '</td>\n            </tr>\n        ';
+        return '\n            <tr onclick="viewItem(' + item.id + ')" style="cursor:pointer;">\n                <td>' + escapeHtml(item.Title || '') + '</td>\n                <td>' + escapeHtml(item.SerialNum || '') + '</td>\n                <td>' + escapeHtml(item.SampleType || '') + '</td>\n                <td>' + escapeHtml(item.StorageLocationCode || '') + '</td>\n                <td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>\n                <td>' + actionCellHtml + '</td>\n            </tr>\n        ';
     }).join('');
 
-    // --- Mobile cards ---
     if (cardsContainer) {
         cardsContainer.innerHTML = allItems.map(item => {
-            const dueDate = item.current_expected_return_date;
             const status = normalizeStatus(item.status || item.Status);
             var metaParts = [];
             if (item.StorageLocationCode) metaParts.push(item.StorageLocationCode);
             if (item.SampleType) metaParts.push(item.SampleType);
-            if (status === 'CHECKED_OUT' && dueDate) metaParts.push('Due ' + dueDate);
             var metaHtml = metaParts.length > 0
                 ? '<div class="inventory-card__meta">' + metaParts.map(function(p) { return '<span class="inventory-card__meta-item">' + escapeHtml(p) + '</span>'; }).join('<span class="inventory-card__meta-sep">·</span>') + '</div>'
                 : '';
@@ -781,23 +817,31 @@ async function deleteSample(id) {
 async function openCheckoutModal(sampleId) {
     const item = allItems.find(i => String(i.id) === String(sampleId));
     if (!item) return;
-    
-    const status = normalizeStatus(item.status || item.Status);
-    if (status !== 'IN_STOCK') {
-        showToast('This sample cannot be checked out (status: ' + formatStatus(status) + ')', 'error');
+
+    var availQty = getAvailableQty(item);
+    var totalQty = getTotalQty(item);
+
+    if (availQty <= 0) {
+        showToast('This sample is out of stock', 'error');
         return;
     }
-    
+
     document.getElementById('checkoutSampleId').value = sampleId;
-    
-    // Display current user as borrower
+    document.getElementById('checkoutAvailQty').textContent = availQty;
+    document.getElementById('checkoutTotalQty').textContent = totalQty;
+
+    var qtyInput = document.getElementById('checkoutQuantity');
+    qtyInput.value = 1;
+    qtyInput.min = 1;
+    qtyInput.max = availQty;
+
     const borrowerDisplay = document.getElementById('checkoutBorrowerName');
     if (currentUser) {
         borrowerDisplay.textContent = currentUser.display_name || currentUser.username || 'Unknown User';
     } else {
         borrowerDisplay.textContent = 'Not logged in';
     }
-    
+
     const info = document.getElementById('checkoutSampleInfo');
     info.innerHTML = `
         <div class="sample-info-box">
@@ -807,15 +851,14 @@ async function openCheckoutModal(sampleId) {
             <p><strong>Rack:</strong> ${escapeHtml(item.StorageLocationCode || '')}</p>
         </div>
     `;
-    
-    // Set default return date to 7 days from now
+
     const defaultDate = new Date();
     defaultDate.setDate(defaultDate.getDate() + 7);
     const yyyy = defaultDate.getFullYear();
     const mm = String(defaultDate.getMonth() + 1).padStart(2, '0');
     const dd = String(defaultDate.getDate()).padStart(2, '0');
     document.getElementById('expectedReturnDate').value = `${yyyy}-${mm}-${dd}`;
-    
+
     openModal('checkoutModal');
 }
 
@@ -828,6 +871,7 @@ async function submitCheckout(e) {
     
     const data = {
         sample_id: parseInt(sampleId),
+        quantity: parseInt(document.getElementById('checkoutQuantity').value) || 1,
         borrower_department: document.getElementById('borrowerDepartment').value.trim(),
         borrower_email: document.getElementById('borrowerEmail').value.trim(),
         expected_return_date: document.getElementById('expectedReturnDate').value,
@@ -863,73 +907,83 @@ async function submitCheckout(e) {
 async function openReturnModal(sampleId) {
     const item = allItems.find(i => String(i.id) === String(sampleId));
     if (!item) return;
-    
-    const status = normalizeStatus(item.status || item.Status);
-    if (status !== 'CHECKED_OUT') {
+
+    var availQty = getAvailableQty(item);
+    var totalQty = getTotalQty(item);
+    var totalCheckedOut = totalQty - availQty;
+
+    if (availQty >= totalQty) {
         showToast('This sample is not currently checked out', 'error');
         return;
     }
-    
-    // Find the active checkout record
+
     try {
         const response = await fetch(API.checkoutRecords(sampleId));
         const records = await response.json();
-        const active = records.find(r => r.checkout_status === 'OUT');
-        
-        if (!active) {
+        const activeRecords = records.filter(r => r.checkout_status === 'OUT');
+
+        if (activeRecords.length === 0) {
             showToast('No active checkout record found', 'error');
             return;
         }
-        
-        document.getElementById('returnRecordId').value = active.id;
-        
+
+        document.getElementById('returnRecordId').value = sampleId;
+
+        var qtyInput = document.getElementById('returnQuantity');
+        qtyInput.value = totalCheckedOut;
+        qtyInput.min = 1;
+        qtyInput.max = totalCheckedOut;
+        qtyInput.readOnly = false;
+
         const info = document.getElementById('returnSampleInfo');
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('actualReturnDate').value = today;
-        
+
+        var recordsHtml = activeRecords.map(function(r, i) {
+            return '<p style="font-size:13px;color:#555;margin:2px 0;">Record ' + (i+1) + ': ' + escapeHtml(r.borrower_name || '') + ' - Qty: ' + (r.quantity || 1) + '</p>';
+        }).join('');
+
         info.innerHTML = `
             <div class="sample-info-box">
-                <p><strong>Sample:</strong> ${escapeHtml(active.sample_title || item.Title || '')}</p>
-                <p><strong>Serial:</strong> ${escapeHtml(active.sample_serial || item.SerialNum || '')}</p>
-                <p><strong>Borrower:</strong> ${escapeHtml(active.borrower_name || '')}</p>
-                <p><strong>Department:</strong> ${escapeHtml(active.borrower_department || '')}</p>
-                <p><strong>Checked Out:</strong> ${escapeHtml(active.checkout_date || '')}</p>
-                <p><strong>Expected Return:</strong> ${escapeHtml(active.expected_return_date || '')}</p>
-                <p><strong>Checkout Remarks:</strong> ${escapeHtml(active.checkout_remarks || '')}</p>
+                <p><strong>Sample:</strong> ${escapeHtml(item.Title || '')} / ${escapeHtml(item.SerialNum || '')}</p>
+                <p><strong>Checked Out:</strong> ${totalCheckedOut} / ${totalQty} units (across ${activeRecords.length} record(s))</p>
+                <p><strong>Stock Available after return:</strong> ${availQty} / ${totalQty}</p>
+                <div style="margin-top:8px;padding-top:8px;border-top:1px solid #ddd;">${recordsHtml}</div>
             </div>
         `;
-        
+
         openModal('returnModal');
     } catch (err) {
         console.error(err);
-        showToast('Error: Could not load checkout record', 'error');
+        showToast('Error: Could not load checkout records', 'error');
     }
 }
 
 async function submitReturn(e) {
     e.preventDefault();
-    
-    const recordId = document.getElementById('returnRecordId').value;
+
+    const sampleId = document.getElementById('returnRecordId').value;
     const submitBtn = document.querySelector('#returnModal .form-actions button[type="submit"]');
     setButtonPending(submitBtn, true, 'Returning...');
-    
+
     const data = {
+        quantity: parseInt(document.getElementById('returnQuantity').value) || 1,
         actual_return_date: document.getElementById('actualReturnDate').value,
         return_remarks: document.getElementById('returnRemarks').value.trim()
     };
-    
+
     try {
-        const response = await fetch(API.checkoutReturn(recordId), {
+        const response = await fetch(API.itemReturn(sampleId), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        
+
         if (!response.ok) {
             const err = await response.json();
             throw new Error(err.detail || 'Return failed');
         }
-        
+
         closeModal();
         await loadItems();
         showToast('Returned successfully', 'success');
@@ -952,9 +1006,11 @@ async function viewItem(id) {
             throw new Error(err.detail || 'Failed to load item details');
         }
         const item = await response.json();
-        
-        const status = normalizeStatus(item.status || item.Status);
-        
+
+        var status = normalizeStatus(item.status || item.Status);
+        var availQty = getAvailableQty(item);
+        var totalQty = getTotalQty(item);
+
         let historyHtml = '';
         if (item.checkout_history && item.checkout_history.length > 0) {
             historyHtml = `
@@ -966,6 +1022,7 @@ async function viewItem(id) {
                                 <tr>
                                     <th>Borrower</th>
                                     <th>Department</th>
+                                    <th>Qty</th>
                                     <th>Checkout</th>
                                     <th>Expected Return</th>
                                     <th>Actual Return</th>
@@ -978,6 +1035,7 @@ async function viewItem(id) {
                                     <tr>
                                         <td>${escapeHtml(h.borrower_name || '')}</td>
                                         <td>${escapeHtml(h.borrower_department || '')}</td>
+                                        <td>${h.quantity || 1}</td>
                                         <td>${escapeHtml(h.checkout_date || '')}</td>
                                         <td>${escapeHtml(h.expected_return_date || '')}</td>
                                         <td>${escapeHtml(h.actual_return_date || '')}</td>
@@ -993,106 +1051,102 @@ async function viewItem(id) {
         } else {
             historyHtml = `<p style="color:#999;">No checkout history</p>`;
         }
-        
-        let currentBorrowerHtml = '';
-        if (item.current_borrower_name) {
-            currentBorrowerHtml = `
-                <div class="sample-info-box">
-                    <p><strong>Current Borrower:</strong> ${escapeHtml(item.current_borrower_name)}</p>
-                    <p><strong>Department:</strong> ${escapeHtml(item.current_borrower_department || '')}</p>
-                    <p><strong>Email:</strong> ${escapeHtml(item.current_borrower_email || '')}</p>
-                    <p><strong>Expected Return:</strong> ${escapeHtml(item.current_expected_return_date || '')}</p>
+
+        var stockDisplayHtml = '';
+        var stockStatusClass = getDisplayStatusClass(item);
+        var stockStatusText = getDisplayStatusText(item);
+        stockDisplayHtml = `
+            <div class="detail-row">
+                <div>
+                    <div class="detail-label">Stock</div>
+                    <div class="detail-value" style="font-weight:600;">${availQty} / ${totalQty} <span class="status-badge ${stockStatusClass}">${stockStatusText}</span></div>
                 </div>
-            `;
-        }
-        
-         const content = document.getElementById('sampleDetailContent');
-         const isAdmin = currentUser && currentUser.is_admin;
-         content.innerHTML = `
-             <div class="detail-row">
-                 <div>
-                     <div class="detail-label">Title</div>
-                     <div class="detail-value">${escapeHtml(item.Title || '')}</div>
-                 </div>
-                 <div>
-                     <div class="detail-label">Serial Number</div>
-                     <div class="detail-value">${escapeHtml(item.SerialNum || '')}</div>
-                 </div>
-             </div>
-             <div class="detail-row">
-                 <div>
-                     <div class="detail-label">Sample Type</div>
-                     <div class="detail-value">${escapeHtml(item.SampleType || '')}</div>
-                 </div>
-                 <div>
-                     <div class="detail-label">Storage Rack</div>
-                     <div class="detail-value">${escapeHtml(item.StorageLocationCode || '')}</div>
-                 </div>
-             </div>
-             <div class="detail-row">
-                 <div>
-                     <div class="detail-label">Category</div>
-                     <div class="detail-value">${escapeHtml(item.Category || '')}</div>
-                 </div>
-                 <div>
-                     <div class="detail-label">Sub Category</div>
-                     <div class="detail-value">${escapeHtml(item.SubCategory || '')}</div>
-                 </div>
-             </div>
-             <div class="detail-row">
-                 <div>
-                     <div class="detail-label">Brand</div>
-                     <div class="detail-value">${escapeHtml(item.Brand || '')}</div>
-                 </div>
-                 <div>
-                     <div class="detail-label">Model</div>
-                     <div class="detail-value">${escapeHtml(item.Model || '')}</div>
-                 </div>
-             </div>
-             <div class="detail-row">
-                 <div>
-                     <div class="detail-label">Department Owner</div>
-                     <div class="detail-value">${escapeHtml(item.DepartmentOwner || '')}</div>
-                 </div>
-                 <div>
-                     <div class="detail-label">Condition</div>
-                     <div class="detail-value">${escapeHtml(item.Condition || '')}</div>
-                 </div>
-             </div>
-             <div class="detail-row">
-                 <div>
-                     <div class="detail-label">Date Received</div>
-                     <div class="detail-value">${escapeHtml(item.DateReceived || '')}</div>
-                 </div>
-                 <div>
-                     <div class="detail-label">Status</div>
-                     <div class="detail-value"><span class="status-badge ${getStatusBadgeClass(status)}">${formatStatus(status)}</span></div>
-                 </div>
-             </div>
-             <div class="detail-row">
-                 <div>
-                     <div class="detail-label">Unit Count</div>
-                     <div class="detail-value">${escapeHtml(item.UnitCount || '')}</div>
-                 </div>
-                 <div>
-                     <div class="detail-label">Unit Measure</div>
-                     <div class="detail-value">${escapeHtml(item.UnitMeasure || '')}</div>
-                 </div>
-             </div>
-             <div class="detail-row" style="grid-column: 1 / -1;">
-                 <div class="detail-label">Notes</div>
-                 <div class="detail-value" style="margin-top:5px;">${escapeHtml(item.Notes || '')}</div>
-             </div>
-             ${currentBorrowerHtml}
-             ${historyHtml}
-               <div style="margin-top:20px;padding-top:20px;border-top:1px solid #ddd;display:flex;gap:10px;">
-                   ${status === 'IN_STOCK' ? `<button class="checkout-btn" onclick="closeModal(); openCheckoutModal(${item.id})">Checkout</button>` : ''}
-                   ${status === 'CHECKED_OUT' ? `<button class="return-btn" onclick="closeModal(); openReturnModal(${item.id})">Return</button>` : ''}
-                   ${isAdmin ? `<button class="edit" onclick="closeModal(); startEdit(${item.id})">Edit</button>` : ''}
-                   ${isAdmin ? `<button class="delete" onclick="closeModal(); deleteSample(${item.id})">Delete</button>` : ''}
-               </div>
-         `;
-        
+                <div>
+                    <div class="detail-label">Unit Measure</div>
+                    <div class="detail-value">${escapeHtml(item.UnitMeasure || '')}</div>
+                </div>
+            </div>
+        `;
+
+        var hasActiveCheckouts = item.checkout_history && item.checkout_history.some(function(h) { return h.checkout_status === 'OUT'; });
+
+        const content = document.getElementById('sampleDetailContent');
+        const isAdmin = currentUser && currentUser.is_admin;
+        content.innerHTML = `
+            <div class="detail-row">
+                <div>
+                    <div class="detail-label">Title</div>
+                    <div class="detail-value">${escapeHtml(item.Title || '')}</div>
+                </div>
+                <div>
+                    <div class="detail-label">Serial Number</div>
+                    <div class="detail-value">${escapeHtml(item.SerialNum || '')}</div>
+                </div>
+            </div>
+            <div class="detail-row">
+                <div>
+                    <div class="detail-label">Sample Type</div>
+                    <div class="detail-value">${escapeHtml(item.SampleType || '')}</div>
+                </div>
+                <div>
+                    <div class="detail-label">Storage Rack</div>
+                    <div class="detail-value">${escapeHtml(item.StorageLocationCode || '')}</div>
+                </div>
+            </div>
+            <div class="detail-row">
+                <div>
+                    <div class="detail-label">Category</div>
+                    <div class="detail-value">${escapeHtml(item.Category || '')}</div>
+                </div>
+                <div>
+                    <div class="detail-label">Sub Category</div>
+                    <div class="detail-value">${escapeHtml(item.SubCategory || '')}</div>
+                </div>
+            </div>
+            <div class="detail-row">
+                <div>
+                    <div class="detail-label">Brand</div>
+                    <div class="detail-value">${escapeHtml(item.Brand || '')}</div>
+                </div>
+                <div>
+                    <div class="detail-label">Model</div>
+                    <div class="detail-value">${escapeHtml(item.Model || '')}</div>
+                </div>
+            </div>
+            <div class="detail-row">
+                <div>
+                    <div class="detail-label">Department Owner</div>
+                    <div class="detail-value">${escapeHtml(item.DepartmentOwner || '')}</div>
+                </div>
+                <div>
+                    <div class="detail-label">Condition</div>
+                    <div class="detail-value">${escapeHtml(item.Condition || '')}</div>
+                </div>
+            </div>
+            <div class="detail-row">
+                <div>
+                    <div class="detail-label">Date Received</div>
+                    <div class="detail-value">${escapeHtml(item.DateReceived || '')}</div>
+                </div>
+                <div>
+                    <div class="detail-label">Status</div>
+                    <div class="detail-value"><span class="status-badge ${getDisplayStatusClass(item)}">${getDisplayStatusText(item)}</span></div>
+                </div>
+            </div>
+            ${stockDisplayHtml}
+            <div class="detail-row" style="grid-column: 1 / -1;">
+                <div class="detail-label">Notes</div>
+                <div class="detail-value" style="margin-top:5px;">${escapeHtml(item.Notes || '')}</div>
+            </div>
+            ${historyHtml}
+            <div style="margin-top:20px;padding-top:20px;border-top:1px solid #ddd;display:flex;gap:10px;">
+                ${availQty > 0 && status !== 'LOST' && status !== 'SCRAPPED' ? `<button class="checkout-btn" onclick="closeModal(); openCheckoutModal(${item.id})">Checkout</button>` : ''}
+                ${hasActiveCheckouts && status !== 'LOST' && status !== 'SCRAPPED' ? `<button class="return-btn" onclick="closeModal(); openReturnModal(${item.id})">Return</button>` : ''}
+                ${isAdmin ? `<button class="edit" onclick="closeModal(); startEdit(${item.id})">Edit</button>` : ''}
+                ${isAdmin ? `<button class="delete" onclick="closeModal(); deleteSample(${item.id})">Delete</button>` : ''}
+            </div>
+        `;
+
         openModal('detailModal');
     } catch (err) {
         console.error(err);

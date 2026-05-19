@@ -196,6 +196,17 @@ def placeholder() -> str:
     return "%s" if is_postgres() else "?"
 
 
+def _parse_unit_count(value) -> int:
+    """Parse UnitCount into a safe positive integer. Fallback to 1."""
+    if value is None:
+        return 1
+    try:
+        parsed = int(str(value).strip())
+        return parsed if parsed > 0 else 1
+    except (TypeError, ValueError):
+        return 1
+
+
 # ============================================================================
 # Password utilities
 # ============================================================================
@@ -483,6 +494,27 @@ def init_db():
         cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS sample_type TEXT')
         cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS storage_location_code TEXT DEFAULT \'\'')
         cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        # Quantity migration for PostgreSQL
+        cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1')
+        cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS available_quantity INTEGER DEFAULT 1')
+        cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1')
+        cur.execute("UPDATE inventory SET quantity = 1 WHERE quantity IS NULL")
+        cur.execute("UPDATE checkout_records SET quantity = 1 WHERE quantity IS NULL")
+
+        cur.execute("""
+            UPDATE inventory
+            SET quantity = CASE
+                WHEN NULLIF(TRIM(COALESCE(\"UnitCount\", '')), '') IS NOT NULL
+                     AND TRIM(COALESCE(\"UnitCount\", '')) ~ '^[0-9]+$'
+                     AND CAST(TRIM(\"UnitCount\") AS INTEGER) > 0
+                THEN CAST(TRIM(\"UnitCount\") AS INTEGER)
+                ELSE quantity
+            END
+            WHERE quantity IS NULL OR quantity = 1
+        """)
+
+        cur.execute("UPDATE inventory SET available_quantity = quantity WHERE available_quantity IS NULL")
+        cur.execute("UPDATE inventory SET available_quantity = quantity WHERE available_quantity > quantity")
     else:
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='checkout_records'")
         has_checkout = cur.fetchone() is not None
@@ -510,7 +542,9 @@ def init_db():
                     PhotoLink TEXT,
                     Notes TEXT,
                     Column1 TEXT,
-                    Attachments TEXT
+                    Attachments TEXT,
+                    quantity INTEGER DEFAULT 1,
+                    available_quantity INTEGER DEFAULT 1
                 )
             """)
         else:
@@ -525,6 +559,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS checkout_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sample_id INTEGER NOT NULL REFERENCES inventory(id),
+                quantity INTEGER DEFAULT 1,
                 borrower_name TEXT NOT NULL DEFAULT '',
                 borrower_department TEXT NOT NULL DEFAULT '',
                 borrower_email TEXT NOT NULL DEFAULT '',
@@ -548,6 +583,50 @@ def init_db():
                 cur.execute(f'ALTER TABLE checkout_records ADD COLUMN "{col}" TEXT')
             except Exception:
                 pass
+        # Quantity migration for SQLite
+        try:
+            cur.execute('ALTER TABLE inventory ADD COLUMN quantity INTEGER DEFAULT 1')
+        except Exception:
+            pass
+        try:
+            cur.execute('ALTER TABLE inventory ADD COLUMN available_quantity INTEGER DEFAULT 1')
+        except Exception:
+            pass
+        try:
+            cur.execute('ALTER TABLE checkout_records ADD COLUMN quantity INTEGER DEFAULT 1')
+        except Exception:
+            pass
+        cur.execute("UPDATE inventory SET quantity = 1 WHERE quantity IS NULL")
+        cur.execute("UPDATE checkout_records SET quantity = 1 WHERE quantity IS NULL")
+
+        cur.execute("SELECT id, UnitCount, quantity, available_quantity FROM inventory")
+        rows = cur.fetchall()
+        for row in rows:
+            item_id = row[0]
+            unit_count = row[1]
+            quantity = row[2]
+            available_quantity = row[3]
+
+            parsed_total = _parse_unit_count(unit_count)
+
+            new_quantity = parsed_total
+            if available_quantity is None:
+                new_available = new_quantity
+            else:
+                try:
+                    new_available = int(available_quantity)
+                except (TypeError, ValueError):
+                    new_available = new_quantity
+                if new_available > new_quantity:
+                    new_available = new_quantity
+                if new_available < 0:
+                    new_available = 0
+
+            if quantity is None or quantity == 1:
+                cur.execute(
+                    "UPDATE inventory SET quantity = ?, available_quantity = ? WHERE id = ?",
+                    (new_quantity, new_available, item_id)
+                )
     conn.commit()
     conn.close()
 
@@ -1034,17 +1113,8 @@ async def list_items(
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             sql = """
-                SELECT i.*,
-                       cr.borrower_name AS current_borrower_name,
-                       cr.expected_return_date AS current_expected_return_date
+                SELECT i.*
                 FROM inventory i
-                LEFT JOIN checkout_records cr
-                  ON cr.id = (
-                      SELECT MAX(cr2.id)
-                      FROM checkout_records cr2
-                      WHERE cr2.sample_id = i.id
-                        AND cr2.checkout_status = 'OUT'
-                  )
                 WHERE 1=1
             """
             params = []
@@ -1070,17 +1140,8 @@ async def list_items(
         conn.row_factory = aiosqlite.Row
         cur = await conn.cursor()
         sql = """
-            SELECT i.*,
-                   cr.borrower_name AS current_borrower_name,
-                   cr.expected_return_date AS current_expected_return_date
+            SELECT i.*
             FROM inventory i
-            LEFT JOIN checkout_records cr
-              ON cr.id = (
-                  SELECT MAX(cr2.id)
-                  FROM checkout_records cr2
-                  WHERE cr2.sample_id = i.id
-                    AND cr2.checkout_status = 'OUT'
-              )
             WHERE 1=1
         """
         params = []
@@ -1118,17 +1179,8 @@ async def export_items_csv(
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             sql = """
-                SELECT i.*,
-                       cr.borrower_name AS current_borrower_name,
-                       cr.expected_return_date AS current_expected_return_date
+                SELECT i.*
                 FROM inventory i
-                LEFT JOIN checkout_records cr
-                  ON cr.id = (
-                      SELECT MAX(cr2.id)
-                      FROM checkout_records cr2
-                      WHERE cr2.sample_id = i.id
-                        AND cr2.checkout_status = 'OUT'
-                  )
                 WHERE 1=1
             """
             params = []
@@ -1154,17 +1206,8 @@ async def export_items_csv(
         conn.row_factory = aiosqlite.Row
         cur = await conn.cursor()
         sql = """
-            SELECT i.*,
-                   cr.borrower_name AS current_borrower_name,
-                   cr.expected_return_date AS current_expected_return_date
+            SELECT i.*
             FROM inventory i
-            LEFT JOIN checkout_records cr
-              ON cr.id = (
-                  SELECT MAX(cr2.id)
-                  FROM checkout_records cr2
-                  WHERE cr2.sample_id = i.id
-                    AND cr2.checkout_status = 'OUT'
-              )
             WHERE 1=1
         """
         params = []
@@ -1187,7 +1230,7 @@ async def export_items_csv(
     writer = csv.writer(output)
     writer.writerow([
         "Title", "SerialNum", "SampleType", "StorageLocationCode", "Status",
-        "CurrentBorrowerName", "CurrentExpectedReturnDate", "Category",
+        "Quantity", "AvailableQuantity", "Category",
         "SubCategory", "Brand", "Model", "DepartmentOwner", "Condition",
         "DateReceived", "UnitCount", "UnitMeasure", "Notes"
     ])
@@ -1199,8 +1242,8 @@ async def export_items_csv(
             item.get("SampleType") or "",
             item.get("StorageLocationCode") or "",
             status_val,
-            item.get("current_borrower_name") or "",
-            item.get("current_expected_return_date") or "",
+            item.get("quantity") or 1,
+            item.get("available_quantity") or item.get("quantity") or 1,
             item.get("Category") or "",
             item.get("SubCategory") or "",
             item.get("Brand") or "",
@@ -1226,27 +1269,15 @@ async def export_items_csv(
 
 @app.get("/api/items/{item_id}")
 async def get_item(item_id: int):
-    """Get a single item with current checkout info and checkout history."""
+    """Get a single item with checkout history."""
     database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            # Current item
             sql = """
-                SELECT i.*,
-                       cr.borrower_name AS current_borrower_name,
-                       cr.borrower_department AS current_borrower_department,
-                       cr.borrower_email AS current_borrower_email,
-                       cr.expected_return_date AS current_expected_return_date
+                SELECT i.*
                 FROM inventory i
-                LEFT JOIN checkout_records cr
-                  ON cr.id = (
-                      SELECT MAX(cr2.id)
-                      FROM checkout_records cr2
-                      WHERE cr2.sample_id = i.id
-                        AND cr2.checkout_status = 'OUT'
-                  )
                 WHERE i.id = %s
             """
             cur.execute(sql, (item_id,))
@@ -1256,9 +1287,8 @@ async def get_item(item_id: int):
                 return None
             col_names = [d[0] for d in cur.description]
             item = _normalize_item_row(dict(zip(col_names, row)))
-            # Checkout history
             cur.execute("""
-                SELECT sample_title, sample_serial, sample_type,
+                SELECT quantity, sample_title, sample_serial, sample_type,
                        borrower_name, borrower_department, borrower_email,
                        checkout_date, expected_return_date, actual_return_date,
                        checkout_status, checkout_remarks, return_remarks
@@ -1278,21 +1308,9 @@ async def get_item(item_id: int):
         conn = await aiosqlite.connect("sample_management.db")
         conn.row_factory = aiosqlite.Row
         cur = await conn.cursor()
-        # Current item
         sql = """
-            SELECT i.*,
-                   cr.borrower_name AS current_borrower_name,
-                   cr.borrower_department AS current_borrower_department,
-                   cr.borrower_email AS current_borrower_email,
-                   cr.expected_return_date AS current_expected_return_date
+            SELECT i.*
             FROM inventory i
-            LEFT JOIN checkout_records cr
-              ON cr.id = (
-                  SELECT MAX(cr2.id)
-                  FROM checkout_records cr2
-                  WHERE cr2.sample_id = i.id
-                    AND cr2.checkout_status = 'OUT'
-              )
             WHERE i.id = ?
         """
         await cur.execute(sql, (item_id,))
@@ -1301,9 +1319,8 @@ async def get_item(item_id: int):
             await conn.close()
             raise HTTPException(status_code=404, detail="Item not found")
         item = dict(row)
-        # Checkout history
         await cur.execute("""
-            SELECT sample_title, sample_serial, sample_type,
+            SELECT quantity, sample_title, sample_serial, sample_type,
                    borrower_name, borrower_department, borrower_email,
                    checkout_date, expected_return_date, actual_return_date,
                    checkout_status, checkout_remarks, return_remarks
@@ -1321,6 +1338,7 @@ async def get_item(item_id: int):
 # ============================================================================
 # Write Item Endpoints
 # ============================================================================
+
 
 class ItemIn(BaseModel):
     """Input model for creating/updating items."""
@@ -1348,36 +1366,35 @@ class ItemIn(BaseModel):
 @app.post("/api/items")
 async def create_item(request: Request, payload: ItemIn):
     """Create a new inventory item."""
-    # Role protection: only admin can create items
     await require_admin(request)
-    # Block creation with CHECKED_OUT status
     if payload.Status == "CHECKED_OUT":
         raise HTTPException(
             status_code=400,
             detail="Cannot create item with Status=CHECKED_OUT. Use checkout flow instead."
         )
 
+    total_quantity = _parse_unit_count(payload.UnitCount)
     status = payload.Status or "IN_STOCK"
 
-    # Build dynamic SQL for all fields
     field_list = [f for f in ALL_FIELDS]
-    placeholders = []
     values = []
 
     if is_postgres():
-        placeholders = ["%s"] * (len(field_list) + 1)
+        placeholders = ["%s"] * (len(field_list) + 3)
     else:
-        placeholders = ["?"] * (len(field_list) + 1)
+        placeholders = ["?"] * (len(field_list) + 3)
 
     for field in field_list:
         values.append(getattr(payload, field, None))
 
     values.append(status)
+    values.append(total_quantity)
+    values.append(total_quantity)
 
     if is_postgres():
-        field_sql = ", ".join([f'"{f}"' for f in field_list] + ["status"])
+        field_sql = ", ".join([f'"{f}"' for f in field_list] + ["status", "quantity", "available_quantity"])
     else:
-        field_sql = ", ".join([f'"{f}"' for f in field_list] + ["Status"])
+        field_sql = ", ".join([f'"{f}"' for f in field_list] + ["Status", "quantity", "available_quantity"])
     placeholder_sql = ", ".join(placeholders)
 
     database_url = _get_db_url()
@@ -1421,7 +1438,7 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
         def _check():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute("SELECT id FROM inventory WHERE id = %s", (item_id,))
+            cur.execute('SELECT id, quantity, available_quantity, status, "UnitCount" FROM inventory WHERE id = %s', (item_id,))
             row = cur.fetchone()
             conn.close()
             return row
@@ -1429,14 +1446,25 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        await cur.execute("SELECT id FROM inventory WHERE id = ?", (item_id,))
+        await cur.execute("SELECT id, quantity, available_quantity, Status, UnitCount FROM inventory WHERE id = ?", (item_id,))
         existing = await cur.fetchone()
         await conn.close()
 
     if not existing:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    # Build update SQL for fields that are provided
+    if is_postgres():
+        current_quantity = existing[1] if existing[1] is not None else 1
+        current_available = existing[2] if existing[2] is not None else current_quantity
+        current_status = existing[3]
+    else:
+        current_quantity = existing[1] if existing[1] is not None else 1
+        current_available = existing[2] if existing[2] is not None else current_quantity
+        current_status = existing[3]
+
+    if current_status in ('LOST', 'SCRAPPED') and payload.Status is not None and payload.Status not in ('LOST', 'SCRAPPED'):
+        current_available = current_quantity
+
     updates = []
     values = []
     ph = placeholder()
@@ -1446,6 +1474,23 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
         if val is not None:
             updates.append(f'"{field}" = {ph}')
             values.append(val)
+
+    if payload.UnitCount is not None:
+        new_total_quantity = _parse_unit_count(payload.UnitCount)
+        updates.append(f'quantity = {ph}')
+        values.append(new_total_quantity)
+
+        delta = new_total_quantity - current_quantity
+        new_available_quantity = current_available + delta
+        if new_available_quantity is None:
+            new_available_quantity = new_total_quantity
+        if new_available_quantity > new_total_quantity:
+            new_available_quantity = new_total_quantity
+        if new_available_quantity < 0:
+            new_available_quantity = 0
+
+        updates.append(f'available_quantity = {ph}')
+        values.append(new_available_quantity)
 
     if payload.Status is not None:
         if is_postgres():
@@ -1481,57 +1526,46 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
 
 @app.delete("/api/items/{item_id}")
 async def delete_item(request: Request, item_id: int):
-    """Delete an inventory item. Blocked if item has active checkout records."""
-    # Role protection: only admin can delete items
+    """Delete an inventory item. Active checkout records are auto-closed (admin-only)."""
     await require_admin(request)
+    from datetime import date
+    today = date.today().isoformat()
     database_url = _get_db_url()
 
     if is_postgres():
-        def _check_and_delete():
+        def _delete():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            # Check for active checkout records (OUT status)
-            cur.execute("SELECT COUNT(*) FROM checkout_records WHERE sample_id = %s AND checkout_status = 'OUT'", (item_id,))
-            active_count = cur.fetchone()[0]
-            if active_count > 0:
-                conn.close()
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Cannot delete item: item has {active_count} active checkout record(s). Return item first."
-                )
-            # Check item exists
             cur.execute("SELECT id FROM inventory WHERE id = %s", (item_id,))
             if not cur.fetchone():
                 conn.close()
                 raise HTTPException(status_code=404, detail="Item not found")
-            # Delete returned checkout records (if any) to avoid foreign key issues
-            cur.execute("DELETE FROM checkout_records WHERE sample_id = %s AND checkout_status = 'RETURNED'", (item_id,))
-            # Delete the item
+            cur.execute("""
+                UPDATE checkout_records SET checkout_status = 'RETURNED',
+                    actual_return_date = %s, return_remarks = 'Auto-closed on item deletion',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE sample_id = %s AND checkout_status = 'OUT'
+            """, (today, item_id))
+            cur.execute("DELETE FROM checkout_records WHERE sample_id = %s", (item_id,))
             cur.execute("DELETE FROM inventory WHERE id = %s", (item_id,))
             conn.commit()
             conn.close()
             return True
-        await _safe_pg_query(_check_and_delete)
+        await _safe_pg_query(_delete)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        # Check for active checkout records (OUT status)
-        await cur.execute("SELECT COUNT(*) FROM checkout_records WHERE sample_id = ? AND checkout_status = 'OUT'", (item_id,))
-        active_count = (await cur.fetchone())[0]
-        if active_count > 0:
-            await conn.close()
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot delete item: item has {active_count} active checkout record(s). Return item first."
-            )
-        # Check item exists
         await cur.execute("SELECT id FROM inventory WHERE id = ?", (item_id,))
         if not await cur.fetchone():
             await conn.close()
             raise HTTPException(status_code=404, detail="Item not found")
-        # Delete returned checkout records (if any) to avoid foreign key issues
-        await cur.execute("DELETE FROM checkout_records WHERE sample_id = ? AND checkout_status = 'RETURNED'", (item_id,))
-        # Delete the item
+        await cur.execute("""
+            UPDATE checkout_records SET checkout_status = 'RETURNED',
+                actual_return_date = ?, return_remarks = 'Auto-closed on item deletion',
+                updated_at = datetime('now')
+            WHERE sample_id = ? AND checkout_status = 'OUT'
+        """, (today, item_id))
+        await cur.execute("DELETE FROM checkout_records WHERE sample_id = ?", (item_id,))
         await cur.execute("DELETE FROM inventory WHERE id = ?", (item_id,))
         await conn.commit()
         await conn.close()
@@ -1545,6 +1579,7 @@ async def delete_item(request: Request, item_id: int):
 
 class CheckoutIn(BaseModel):
     sample_id: int
+    quantity: int = 1
     borrower_department: str = ""
     borrower_email: str = ""
     expected_return_date: str = ""
@@ -1552,6 +1587,7 @@ class CheckoutIn(BaseModel):
 
 
 class CheckoutReturnIn(BaseModel):
+    quantity: int = 1
     actual_return_date: str = ""
     return_remarks: str = ""
 
@@ -1562,13 +1598,13 @@ class CheckoutReturnIn(BaseModel):
 
 @app.post("/api/checkout")
 async def create_checkout(request: Request, payload: CheckoutIn):
-    """Create a checkout record for a sample."""
-    # Role protection: only authenticated users can checkout
+    """Create a checkout record for a sample with quantity."""
     user = await require_login(request)
-    # Derive borrower name from authenticated user
     borrower_name = user.display_name.strip() if user.display_name and user.display_name.strip() else user.username
     if not borrower_name:
         raise HTTPException(status_code=400, detail="Unable to determine borrower identity")
+    if payload.quantity < 1:
+        raise HTTPException(status_code=400, detail="Invalid quantity")
     database_url = _get_db_url()
     sample_id = payload.sample_id
     from datetime import date
@@ -1578,31 +1614,25 @@ async def create_checkout(request: Request, payload: CheckoutIn):
         def _checkout():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            # Verify item exists and is IN_STOCK
-            cur.execute('SELECT status, "Title", "SerialNum", "SampleType", "StorageLocationCode" FROM inventory WHERE id = %s', (sample_id,))
+            cur.execute('SELECT quantity, available_quantity, status, "Title", "SerialNum", "SampleType", "StorageLocationCode" FROM inventory WHERE id = %s', (sample_id,))
             row = cur.fetchone()
             if not row:
                 conn.close()
                 raise HTTPException(status_code=404, detail="Sample not found")
-            status, title, serial, stype, storage_loc = row
-            if status != "IN_STOCK":
+            quantity, available_quantity, status, title, serial, stype, storage_loc = row
+            if status in ("LOST", "SCRAPPED"):
                 conn.close()
                 raise HTTPException(status_code=400, detail=f"Sample status is {status}, cannot checkout")
-            # Prevent duplicate active checkout records
-            cur.execute("SELECT COUNT(*) FROM checkout_records WHERE sample_id = %s AND checkout_status = 'OUT'", (sample_id,))
-            if cur.fetchone()[0] > 0:
+            if payload.quantity > available_quantity:
                 conn.close()
-                raise HTTPException(status_code=400, detail="Sample already has an active checkout record")
-            # Create checkout record
+                raise HTTPException(status_code=400, detail="Not enough available stock")
             cur.execute("""
-                INSERT INTO checkout_records (sample_id, borrower_name, borrower_department, borrower_email,
+                INSERT INTO checkout_records (sample_id, quantity, borrower_name, borrower_department, borrower_email,
                     checkout_date, expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type, storage_location_code, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'OUT', %s, %s, %s, %s, CURRENT_TIMESTAMP)
-            """, (sample_id, borrower_name, payload.borrower_department, payload.borrower_email, checkout_date,
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'OUT', %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            """, (sample_id, payload.quantity, borrower_name, payload.borrower_department, payload.borrower_email, checkout_date,
                   payload.expected_return_date, payload.checkout_remarks, title, serial, stype, storage_loc))
-            checkout_id = cur.lastrowid if hasattr(cur, 'lastrowid') else cur.fetchone()[0] if not cur.description else None
-            # Update inventory status
-            cur.execute("UPDATE inventory SET status = 'CHECKED_OUT' WHERE id = %s", (sample_id,))
+            cur.execute("UPDATE inventory SET available_quantity = available_quantity - %s WHERE id = %s", (payload.quantity, sample_id))
             conn.commit()
             conn.close()
             return True
@@ -1610,30 +1640,25 @@ async def create_checkout(request: Request, payload: CheckoutIn):
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        # Verify item exists and is IN_STOCK
-        await cur.execute("SELECT Status, Title, SerialNum, SampleType, StorageLocationCode FROM inventory WHERE id = ?", (sample_id,))
+        await cur.execute("SELECT quantity, available_quantity, Status, Title, SerialNum, SampleType, StorageLocationCode FROM inventory WHERE id = ?", (sample_id,))
         row = await cur.fetchone()
         if not row:
             await conn.close()
             raise HTTPException(status_code=404, detail="Sample not found")
-        status, title, serial, stype, storage_loc = row
-        if status != "IN_STOCK":
+        quantity, available_quantity, status, title, serial, stype, storage_loc = row
+        if status in ("LOST", "SCRAPPED"):
             await conn.close()
             raise HTTPException(status_code=400, detail=f"Sample status is {status}, cannot checkout")
-        # Prevent duplicate active checkout records
-        await cur.execute("SELECT COUNT(*) FROM checkout_records WHERE sample_id = ? AND checkout_status = 'OUT'", (sample_id,))
-        if (await cur.fetchone())[0] > 0:
+        if payload.quantity > available_quantity:
             await conn.close()
-            raise HTTPException(status_code=400, detail="Sample already has an active checkout record")
-        # Create checkout record
+            raise HTTPException(status_code=400, detail="Not enough available stock")
         await cur.execute("""
-            INSERT INTO checkout_records (sample_id, borrower_name, borrower_department, borrower_email,
+            INSERT INTO checkout_records (sample_id, quantity, borrower_name, borrower_department, borrower_email,
                 checkout_date, expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type, storage_location_code, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'OUT', ?, ?, ?, ?, datetime('now'))
-        """, (sample_id, borrower_name, payload.borrower_department, payload.borrower_email, checkout_date,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'OUT', ?, ?, ?, ?, datetime('now'))
+        """, (sample_id, payload.quantity, borrower_name, payload.borrower_department, payload.borrower_email, checkout_date,
               payload.expected_return_date, payload.checkout_remarks, title, serial, stype, storage_loc))
-        # Update inventory status
-        await cur.execute("UPDATE inventory SET Status = 'CHECKED_OUT' WHERE id = ?", (sample_id,))
+        await cur.execute("UPDATE inventory SET available_quantity = available_quantity - ? WHERE id = ?", (payload.quantity, sample_id))
         await conn.commit()
         await conn.close()
 
@@ -1642,33 +1667,46 @@ async def create_checkout(request: Request, payload: CheckoutIn):
 
 @app.put("/api/checkout/{record_id}/return")
 async def return_checkout(request: Request, record_id: int, payload: CheckoutReturnIn):
-    """Return a checked out sample."""
-    # Role protection: only authenticated users can return items
+    """Return a checked out sample with quantity."""
     await require_login(request)
+    if payload.quantity < 1:
+        raise HTTPException(status_code=400, detail="Invalid quantity")
     database_url = _get_db_url()
 
     if is_postgres():
         def _return():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            # Verify checkout record exists and is OUT
-            cur.execute("SELECT sample_id, checkout_status FROM checkout_records WHERE id = %s", (record_id,))
+            cur.execute("SELECT sample_id, quantity, checkout_status FROM checkout_records WHERE id = %s", (record_id,))
             row = cur.fetchone()
             if not row:
                 conn.close()
                 raise HTTPException(status_code=404, detail="Checkout record not found")
-            sample_id, checkout_status = row
+            sample_id, record_quantity, checkout_status = row
             if checkout_status != "OUT":
                 conn.close()
                 raise HTTPException(status_code=400, detail="Checkout record is not active")
-            # Update checkout record
-            cur.execute("""
-                UPDATE checkout_records SET checkout_status = 'RETURNED',
-                    actual_return_date = %s, return_remarks = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-            """, (payload.actual_return_date, payload.return_remarks, record_id))
-            # Update inventory status
-            cur.execute("UPDATE inventory SET status = 'IN_STOCK' WHERE id = %s", (sample_id,))
+            if payload.quantity < 1 or payload.quantity > record_quantity:
+                conn.close()
+                raise HTTPException(status_code=400, detail=f"Return quantity must be between 1 and {record_quantity}")
+            cur.execute("SELECT quantity, available_quantity FROM inventory WHERE id = %s", (sample_id,))
+            total_qty, avail_qty = cur.fetchone()
+            if avail_qty + payload.quantity > total_qty:
+                conn.close()
+                raise HTTPException(status_code=400, detail="Return quantity exceeds total stock")
+            if payload.quantity >= record_quantity:
+                cur.execute("""
+                    UPDATE checkout_records SET checkout_status = 'RETURNED',
+                        actual_return_date = %s, return_remarks = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (payload.actual_return_date, payload.return_remarks, record_id))
+            else:
+                cur.execute("""
+                    UPDATE checkout_records SET quantity = quantity - %s,
+                        return_remarks = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (payload.quantity, payload.return_remarks, record_id))
+            cur.execute("UPDATE inventory SET available_quantity = available_quantity + %s WHERE id = %s", (payload.quantity, sample_id))
             conn.commit()
             conn.close()
             return True
@@ -1676,24 +1714,139 @@ async def return_checkout(request: Request, record_id: int, payload: CheckoutRet
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        # Verify checkout record exists and is OUT
-        await cur.execute("SELECT sample_id, checkout_status FROM checkout_records WHERE id = ?", (record_id,))
+        await cur.execute("SELECT sample_id, quantity, checkout_status FROM checkout_records WHERE id = ?", (record_id,))
         row = await cur.fetchone()
         if not row:
             await conn.close()
             raise HTTPException(status_code=404, detail="Checkout record not found")
-        sample_id, checkout_status = row
+        sample_id, record_quantity, checkout_status = row
         if checkout_status != "OUT":
             await conn.close()
             raise HTTPException(status_code=400, detail="Checkout record is not active")
-        # Update checkout record
-        await cur.execute("""
-            UPDATE checkout_records SET checkout_status = 'RETURNED',
-                actual_return_date = ?, return_remarks = ?, updated_at = datetime('now')
-            WHERE id = ?
-        """, (payload.actual_return_date, payload.return_remarks, record_id))
-        # Update inventory status
-        await cur.execute("UPDATE inventory SET Status = 'IN_STOCK' WHERE id = ?", (sample_id,))
+        if payload.quantity < 1 or payload.quantity > record_quantity:
+            await conn.close()
+            raise HTTPException(status_code=400, detail=f"Return quantity must be between 1 and {record_quantity}")
+        await cur.execute("SELECT quantity, available_quantity FROM inventory WHERE id = ?", (sample_id,))
+        total_qty, avail_qty = await cur.fetchone()
+        if avail_qty + payload.quantity > total_qty:
+            await conn.close()
+            raise HTTPException(status_code=400, detail="Return quantity exceeds total stock")
+        if payload.quantity >= record_quantity:
+            await cur.execute("""
+                UPDATE checkout_records SET checkout_status = 'RETURNED',
+                    actual_return_date = ?, return_remarks = ?, updated_at = datetime('now')
+                WHERE id = ?
+            """, (payload.actual_return_date, payload.return_remarks, record_id))
+        else:
+            await cur.execute("""
+                UPDATE checkout_records SET quantity = quantity - ?,
+                    return_remarks = ?, updated_at = datetime('now')
+                WHERE id = ?
+            """, (payload.quantity, payload.return_remarks, record_id))
+        await cur.execute("UPDATE inventory SET available_quantity = available_quantity + ? WHERE id = ?", (payload.quantity, sample_id))
+        await conn.commit()
+        await conn.close()
+
+    return JSONResponse({"status": "ok"})
+
+
+@app.put("/api/items/{sample_id}/return")
+async def return_item_stock(request: Request, sample_id: int, payload: CheckoutReturnIn):
+    """Return quantity to a sample, distributing across all active OUT records."""
+    await require_login(request)
+    if payload.quantity < 1:
+        raise HTTPException(status_code=400, detail="Invalid quantity")
+    from datetime import date
+    today = date.today().isoformat()
+    database_url = _get_db_url()
+
+    if is_postgres():
+        def _return():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT quantity, available_quantity FROM inventory WHERE id = %s", (sample_id,))
+            row = cur.fetchone()
+            if not row:
+                conn.close()
+                raise HTTPException(status_code=404, detail="Sample not found")
+            total_qty, avail_qty = row
+            cur.execute("SELECT id, quantity FROM checkout_records WHERE sample_id = %s AND checkout_status = 'OUT' ORDER BY checkout_date ASC", (sample_id,))
+            out_records = cur.fetchall()
+            if not out_records:
+                conn.close()
+                raise HTTPException(status_code=400, detail="No active checkout records for this sample")
+            total_out = sum(r[1] for r in out_records)
+            if payload.quantity > total_out:
+                conn.close()
+                raise HTTPException(status_code=400, detail=f"Return quantity exceeds total checked out ({total_out})")
+            if avail_qty + payload.quantity > total_qty:
+                conn.close()
+                raise HTTPException(status_code=400, detail="Return quantity exceeds total stock")
+            remaining = payload.quantity
+            for rec_id, rec_qty in out_records:
+                if remaining <= 0:
+                    break
+                if rec_qty <= remaining:
+                    cur.execute("""
+                        UPDATE checkout_records SET checkout_status = 'RETURNED',
+                            actual_return_date = %s, return_remarks = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (today, payload.return_remarks, rec_id))
+                    remaining -= rec_qty
+                else:
+                    cur.execute("""
+                        UPDATE checkout_records SET quantity = quantity - %s,
+                            return_remarks = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (remaining, payload.return_remarks, rec_id))
+                    remaining = 0
+                    break
+            cur.execute("UPDATE inventory SET available_quantity = available_quantity + %s WHERE id = %s", (payload.quantity, sample_id))
+            conn.commit()
+            conn.close()
+            return True
+        await _safe_pg_query(_return)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT quantity, available_quantity FROM inventory WHERE id = ?", (sample_id,))
+        row = await cur.fetchone()
+        if not row:
+            await conn.close()
+            raise HTTPException(status_code=404, detail="Sample not found")
+        total_qty, avail_qty = row
+        await cur.execute("SELECT id, quantity FROM checkout_records WHERE sample_id = ? AND checkout_status = 'OUT' ORDER BY checkout_date ASC", (sample_id,))
+        out_records = await cur.fetchall()
+        if not out_records:
+            await conn.close()
+            raise HTTPException(status_code=400, detail="No active checkout records for this sample")
+        total_out = sum(r[1] for r in out_records)
+        if payload.quantity > total_out:
+            await conn.close()
+            raise HTTPException(status_code=400, detail=f"Return quantity exceeds total checked out ({total_out})")
+        if avail_qty + payload.quantity > total_qty:
+            await conn.close()
+            raise HTTPException(status_code=400, detail="Return quantity exceeds total stock")
+        remaining = payload.quantity
+        for rec_id, rec_qty in out_records:
+            if remaining <= 0:
+                break
+            if rec_qty <= remaining:
+                await cur.execute("""
+                    UPDATE checkout_records SET checkout_status = 'RETURNED',
+                        actual_return_date = ?, return_remarks = ?, updated_at = datetime('now')
+                    WHERE id = ?
+                """, (today, payload.return_remarks, rec_id))
+                remaining -= rec_qty
+            else:
+                await cur.execute("""
+                    UPDATE checkout_records SET quantity = quantity - ?,
+                        return_remarks = ?, updated_at = datetime('now')
+                    WHERE id = ?
+                """, (remaining, payload.return_remarks, rec_id))
+                remaining = 0
+                break
+        await cur.execute("UPDATE inventory SET available_quantity = available_quantity + ? WHERE id = ?", (payload.quantity, sample_id))
         await conn.commit()
         await conn.close()
 
@@ -1710,7 +1863,7 @@ async def get_checkout_records(sample_id: Optional[int] = None):
             cur = conn.cursor()
             if sample_id:
                 cur.execute("""
-                    SELECT id, sample_title, sample_serial, sample_type,
+                    SELECT id, quantity, sample_title, sample_serial, sample_type,
                            borrower_name, borrower_department, borrower_email,
                            checkout_date, expected_return_date, actual_return_date,
                            checkout_status, checkout_remarks, return_remarks
@@ -1720,7 +1873,7 @@ async def get_checkout_records(sample_id: Optional[int] = None):
                 """, (sample_id,))
             else:
                 cur.execute("""
-                    SELECT id, sample_title, sample_serial, sample_type,
+                    SELECT id, quantity, sample_title, sample_serial, sample_type,
                            borrower_name, borrower_department, borrower_email,
                            checkout_date, expected_return_date, actual_return_date,
                            checkout_status, checkout_remarks, return_remarks
@@ -1776,7 +1929,7 @@ async def get_overdue_checkouts(request: Request):
             cur = conn.cursor()
             cur.execute("""
                 SELECT i.id, i."Title" as sample_title, i."StorageLocationCode" as storage_location_code,
-                       cr.borrower_name, cr.borrower_department, cr.expected_return_date
+                       cr.quantity, cr.borrower_name, cr.borrower_department, cr.expected_return_date
                 FROM checkout_records cr
                 JOIN inventory i ON cr.sample_id = i.id
                 WHERE cr.checkout_status = 'OUT' AND cr.expected_return_date < %s
@@ -1793,7 +1946,7 @@ async def get_overdue_checkouts(request: Request):
         cur = await conn.cursor()
         await cur.execute("""
             SELECT i.id, i.Title as sample_title, i.StorageLocationCode as storage_location_code,
-                   cr.borrower_name, cr.borrower_department, cr.expected_return_date
+                   cr.quantity, cr.borrower_name, cr.borrower_department, cr.expected_return_date
             FROM checkout_records cr
             JOIN inventory i ON cr.sample_id = i.id
             WHERE cr.checkout_status = 'OUT' AND cr.expected_return_date < ?
@@ -1811,7 +1964,7 @@ async def get_overdue_checkouts(request: Request):
 
 @app.get("/api/dashboard/stats")
 async def get_dashboard_stats(request: Request):
-    """Get dashboard summary statistics."""
+    """Get dashboard summary statistics (quantity-aware)."""
     await require_admin(request)
     database_url = _get_db_url()
     if is_postgres():
@@ -1820,22 +1973,16 @@ async def get_dashboard_stats(request: Request):
             cur = conn.cursor()
             from datetime import date
             today = date.today().isoformat()
-            # Total samples
             cur.execute("SELECT COUNT(*) FROM inventory")
             total = cur.fetchone()[0]
-            # In stock
-            cur.execute("SELECT COUNT(*) FROM inventory WHERE status = 'IN_STOCK'")
+            cur.execute("SELECT COUNT(*) FROM inventory WHERE available_quantity > 0 AND status NOT IN ('LOST', 'SCRAPPED')")
             in_stock = cur.fetchone()[0]
-            # Checked out
-            cur.execute("SELECT COUNT(*) FROM inventory WHERE status = 'CHECKED_OUT'")
+            cur.execute("SELECT COUNT(*) FROM inventory WHERE available_quantity = 0 AND status NOT IN ('LOST', 'SCRAPPED')")
             checked_out = cur.fetchone()[0]
-            # Overdue
             cur.execute("SELECT COUNT(*) FROM checkout_records WHERE checkout_status = 'OUT' AND expected_return_date < %s", (today,))
             overdue = cur.fetchone()[0]
-            # Lost
             cur.execute("SELECT COUNT(*) FROM inventory WHERE status = 'LOST'")
             lost = cur.fetchone()[0]
-            # Scrapped
             cur.execute("SELECT COUNT(*) FROM inventory WHERE status = 'SCRAPPED'")
             scrapped = cur.fetchone()[0]
             conn.close()
@@ -1853,22 +2000,16 @@ async def get_dashboard_stats(request: Request):
         cur = await conn.cursor()
         from datetime import date
         today = date.today().isoformat()
-        # Total
         await cur.execute("SELECT COUNT(*) FROM inventory")
         total = (await cur.fetchone())[0]
-        # In stock
-        await cur.execute("SELECT COUNT(*) FROM inventory WHERE Status = 'IN_STOCK'")
+        await cur.execute("SELECT COUNT(*) FROM inventory WHERE available_quantity > 0 AND Status NOT IN ('LOST', 'SCRAPPED')")
         in_stock = (await cur.fetchone())[0]
-        # Checked out
-        await cur.execute("SELECT COUNT(*) FROM inventory WHERE Status = 'CHECKED_OUT'")
+        await cur.execute("SELECT COUNT(*) FROM inventory WHERE available_quantity = 0 AND Status NOT IN ('LOST', 'SCRAPPED')")
         checked_out = (await cur.fetchone())[0]
-        # Overdue
         await cur.execute("SELECT COUNT(*) FROM checkout_records WHERE checkout_status = 'OUT' AND expected_return_date < ?", (today,))
         overdue = (await cur.fetchone())[0]
-        # Lost
         await cur.execute("SELECT COUNT(*) FROM inventory WHERE Status = 'LOST'")
         lost = (await cur.fetchone())[0]
-        # Scrapped
         await cur.execute("SELECT COUNT(*) FROM inventory WHERE Status = 'SCRAPPED'")
         scrapped = (await cur.fetchone())[0]
         await conn.close()
@@ -1940,7 +2081,7 @@ async def get_dashboard_current_checkout(request: Request):
             cur = conn.cursor()
             cur.execute("""
                 SELECT i.id, i."Title" as sample_title, i."StorageLocationCode" as storage_location_code,
-                       cr.borrower_name, cr.borrower_department, cr.checkout_date, cr.expected_return_date
+                       cr.quantity, cr.borrower_name, cr.borrower_department, cr.checkout_date, cr.expected_return_date
                 FROM checkout_records cr
                 JOIN inventory i ON cr.sample_id = i.id
                 WHERE cr.checkout_status = 'OUT'
@@ -1958,7 +2099,7 @@ async def get_dashboard_current_checkout(request: Request):
         cur = await conn.cursor()
         await cur.execute("""
             SELECT i.id, i.Title as sample_title, i.StorageLocationCode as storage_location_code,
-                   cr.borrower_name, cr.borrower_department, cr.checkout_date, cr.expected_return_date
+                   cr.quantity, cr.borrower_name, cr.borrower_department, cr.checkout_date, cr.expected_return_date
             FROM checkout_records cr
             JOIN inventory i ON cr.sample_id = i.id
             WHERE cr.checkout_status = 'OUT'
@@ -1980,7 +2121,7 @@ async def get_dashboard_recent_returns(request: Request, limit: int = 10):
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             cur.execute("""
-                SELECT i."Title" as sample_title, cr.borrower_name, cr.borrower_department,
+                SELECT i."Title" as sample_title, cr.quantity, cr.borrower_name, cr.borrower_department,
                        cr.actual_return_date, cr.checkout_date
                 FROM checkout_records cr
                 JOIN inventory i ON cr.sample_id = i.id
@@ -1999,7 +2140,7 @@ async def get_dashboard_recent_returns(request: Request, limit: int = 10):
         conn.row_factory = aiosqlite.Row
         cur = await conn.cursor()
         await cur.execute("""
-            SELECT i.Title as sample_title, cr.borrower_name, cr.borrower_department,
+            SELECT i.Title as sample_title, cr.quantity, cr.borrower_name, cr.borrower_department,
                    cr.actual_return_date, cr.checkout_date
             FROM checkout_records cr
             JOIN inventory i ON cr.sample_id = i.id

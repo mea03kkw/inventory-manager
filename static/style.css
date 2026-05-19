@@ -548,6 +548,8 @@ body {
 /* New simplified status badges for main list */
 .status-badge.status-in,
 .status-badge.status-out,
+.status-badge.status-partial,
+.status-badge.status-full,
 .status-badge.status-lost,
 .status-badge.status-scrapped {
   text-transform: none;
@@ -562,6 +564,16 @@ body {
 .status-badge.status-out {
     background: #ffebee;
     color: #c62828;
+}
+
+.status-badge.status-partial {
+    background: #fff8e1;
+    color: #f57f17;
+}
+
+.status-badge.status-full {
+    background: #e8f5e9;
+    color: #2e7d32;
 }
 
 .status-badge.status-lost {
@@ -597,6 +609,16 @@ body {
 .status-out {
     background: #fee2e2;
     color: #b91c1c;
+}
+
+.status-partial {
+    background: #fff8e1;
+    color: #f57f17;
+}
+
+.status-full {
+    background: #dcfce7;
+    color: #166534;
 }
 
 .status-in-stock {

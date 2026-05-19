@@ -15,7 +15,7 @@ FastAPI backend for sample inventory and checkout tracking with user authenticat
 ### With SQLite (default)
 ```bash
 pip install -r requirements.txt
-uvicorn main:app --reload
+python -m uvicorn main:app --reload
 ```
 Visit http://localhost:8000
 
@@ -23,7 +23,7 @@ Visit http://localhost:8000
 ```bash
 export DATABASE_URL=postgresql://postgres:password@localhost:5432/sample_management
 pip install -r requirements.txt
-uvicorn main:app --reload
+python -m uvicorn main:app --reload
 ```
 
 ## Authentication
