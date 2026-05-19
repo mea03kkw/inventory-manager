@@ -10,6 +10,11 @@
    Layout
    ============================================================ */
 
+html {
+    overflow-x: hidden;
+    max-width: 100%;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     max-width: 1400px;
@@ -18,6 +23,7 @@ body {
     background: #f0f2f5;
     min-height: 100vh;
     color: #333;
+    overflow-x: hidden;
 }
 
 /* ============================================================
@@ -802,7 +808,7 @@ button.view-btn:hover {
     background: white;
     border-radius: 12px;
     max-width: 700px;
-    width: 100%;
+    width: calc(100vw - 40px);
     margin-top: 40px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.25);
     overflow: hidden;
@@ -852,6 +858,7 @@ button.view-btn:hover {
 #returnSampleInfo,
 #sampleDetailContent {
     padding: 20px 25px;
+    overflow-x: hidden;
 }
 
 .sample-info-box {
@@ -1210,6 +1217,25 @@ button.view-btn:hover {
 
     .history-toggle {
         font-size: 14px;
+    }
+
+    /* Modal detail grid — single column on mobile */
+    #sampleDetailContent .detail-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 12px 0;
+    }
+
+    #sampleDetailContent .detail-value {
+        width: 100%;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        white-space: normal;
+    }
+
+    #sampleDetailContent .detail-row > div {
+        min-width: 0;
     }
 }
 

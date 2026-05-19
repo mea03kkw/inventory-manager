@@ -295,21 +295,14 @@ function getDisplayStatusText(item) {
     var status = normalizeStatus(item.status || item.Status);
     if (status === 'LOST') return 'Lost';
     if (status === 'SCRAPPED') return 'Scrapped';
-    var avail = getAvailableQty(item);
-    var total = getTotalQty(item);
-    if (avail <= 0) return 'Out (' + avail + '/' + total + ')';
-    if (avail < total) return 'Partial (' + avail + '/' + total + ')';
-    return 'Full (' + avail + '/' + total + ')';
+    return getStockState(item).label;
 }
 
 function getDisplayStatusClass(item) {
     var status = normalizeStatus(item.status || item.Status);
     if (status === 'LOST') return 'status-lost';
     if (status === 'SCRAPPED') return 'status-scrapped';
-    var avail = getAvailableQty(item);
-    if (avail <= 0) return 'status-out';
-    if (avail < getTotalQty(item)) return 'status-partial';
-    return 'status-full';
+    return 'status-' + getStockState(item).key.toLowerCase();
 }
 
 function getPrimaryActionHtml(item, showActions) {
@@ -326,6 +319,77 @@ function getPrimaryActionHtml(item, showActions) {
         buttons += '<button class="return-btn" onclick="event.stopPropagation();openReturnModal(' + item.id + ')">Return</button>';
     }
     return buttons;
+}
+
+function normalizeStatusFilter(value) {
+    const normalized = String(value || '').trim();
+    if (!normalized) return '';
+    if (normalized === 'CHECKED_OUT') return '';
+    return normalized;
+}
+
+function getNumericQty(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function getStockState(sample) {
+    const total = getNumericQty(sample.quantity);
+    const available = getNumericQty(sample.available_quantity);
+
+    if (available <= 0) {
+        return {
+            key: 'Out',
+            label: `Out (${available}/${total})`,
+            className: 'stock-out',
+            total,
+            available,
+        };
+    }
+
+    if (total > 0 && available >= total) {
+        return {
+            key: 'Full',
+            label: `Full (${available}/${total})`,
+            className: 'stock-full',
+            total,
+            available,
+        };
+    }
+
+    return {
+        key: 'Partial',
+        label: `Partial (${available}/${total})`,
+        className: 'stock-partial',
+        total,
+        available,
+    };
+}
+
+function matchesStatusFilter(sample, selectedStatus) {
+    if (!selectedStatus || selectedStatus === '') {
+        return true;
+    }
+
+    const dbStatus = normalizeStatus(sample.status || sample.Status);
+    if (dbStatus === 'LOST' || dbStatus === 'SCRAPPED') {
+        return selectedStatus === dbStatus;
+    }
+
+    const stock = getStockState(sample);
+
+    switch (selectedStatus) {
+        case 'IN_STOCK':
+            return stock.available > 0;
+        case 'CHECKED_OUT':
+            return stock.available <= 0;
+        case 'LOST':
+            return dbStatus === 'LOST';
+        case 'SCRAPPED':
+            return dbStatus === 'SCRAPPED';
+        default:
+            return true;
+    }
 }
 
 // ============================================================
@@ -441,16 +505,24 @@ function resetReturnForm() {
 
 async function loadItems() {
     const search = document.getElementById('searchBox').value;
-    const status = document.getElementById('statusFilter').value;
+    const rawStatus = document.getElementById('statusFilter').value;
     const rack = document.getElementById('rackFilter').value;
     
     let url = `${API.list()}?`;
     if (search) url += `search=${encodeURIComponent(search)}&`;
-    if (status) url += `status=${encodeURIComponent(status)}&`;
+    // Only send LOST/SCRAPPED to server (actual DB statuses, not quantity-based)
+    if (rawStatus === 'LOST' || rawStatus === 'SCRAPPED') {
+        url += `status=${encodeURIComponent(rawStatus)}&`;
+    }
     if (rack) url += `rack=${encodeURIComponent(rack)}&`;
     
     const response = await fetch(url);
-    allItems = await response.json();
+    let items = await response.json();
+    
+    // Client-side status filtering using quantity-based stock logic
+    items = items.filter(item => matchesStatusFilter(item, rawStatus));
+    
+    allItems = items;
     
     // Collect racks
     allRacks.clear();
@@ -547,11 +619,12 @@ function applyFilters() {
 function exportSamplesCsv() {
     if (!currentUser || !currentUser.is_admin) return;
     var search = document.getElementById('searchBox').value;
-    var status = document.getElementById('statusFilter').value;
+    var rawStatus = document.getElementById('statusFilter').value;
     var rack = document.getElementById('rackFilter').value;
     var params = new URLSearchParams();
     if (search) params.set('search', search);
-    if (status) params.set('status', status);
+    var normalizedStatus = normalizeStatusFilter(rawStatus);
+    if (normalizedStatus) params.set('status', normalizedStatus);
     if (rack) params.set('rack', rack);
     var url = '/api/export/items.csv?' + params.toString();
     try {
