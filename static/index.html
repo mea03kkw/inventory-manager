@@ -123,11 +123,11 @@
             <table>
                 <thead>
                     <tr>
-                        <th>Title</th>
-                        <th>Serial</th>
-                        <th>Type</th>
-                        <th>Rack</th>
-                        <th>Status</th>
+                        <th onclick="sortBy('Title')" class="sortable">Title <span class="sort-indicator"></span></th>
+                        <th onclick="sortBy('SerialNum')" class="sortable">Serial <span class="sort-indicator"></span></th>
+                        <th onclick="sortBy('SampleType')" class="sortable">Type <span class="sort-indicator"></span></th>
+                        <th onclick="sortBy('StorageLocationCode')" class="sortable">Rack <span class="sort-indicator"></span></th>
+                        <th onclick="sortBy('Status')" class="sortable">Status <span class="sort-indicator"></span></th>
                         <th id="actionsHeader">Actions</th>
                     </tr>
                 </thead>
@@ -265,7 +265,7 @@
             </div>
             <div class="form-grid">
                 <div class="form-group">
-                    <label>Quantity</label>
+                    <label>Quantity <span id="checkoutMaxHint" style="font-weight:400;color:#888;text-transform:none;letter-spacing:0;"></span></label>
                     <input type="number" id="checkoutQuantity" min="1" value="1">
                 </div>
                 <div class="form-group">
@@ -305,7 +305,7 @@
             <input type="hidden" id="returnRecordId">
             <div class="form-grid">
                 <div class="form-group">
-                    <label>Return Quantity</label>
+                    <label>Return Quantity <span id="returnMaxHint" style="font-weight:400;color:#888;text-transform:none;letter-spacing:0;"></span></label>
                     <input type="number" id="returnQuantity" min="1" value="1">
                 </div>
                 <div class="form-group">

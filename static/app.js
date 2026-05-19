@@ -43,6 +43,8 @@ let editingId = null;
 let allItems = [];
 let allRacks = new Set();
 let currentUser = null;
+let sortColumn = '';
+let sortDirection = 'asc';
 
 // ============================================================
 // Auth Functions
@@ -534,6 +536,36 @@ async function loadItems() {
     renderItems();
 }
 
+function sortBy(column) {
+    if (sortColumn === column) {
+        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortColumn = column;
+        sortDirection = 'asc';
+    }
+    updateSortIndicators();
+    renderItems();
+}
+
+function updateSortIndicators() {
+    document.querySelectorAll('.sortable .sort-indicator').forEach(function(el) {
+        el.textContent = '';
+    });
+    if (sortColumn) {
+        var header = document.querySelector('th[onclick*="' + sortColumn + '"] .sort-indicator');
+        if (header) {
+            header.textContent = sortDirection === 'asc' ? ' \u2191' : ' \u2193';
+        }
+    }
+}
+
+function getSortValue(item, column) {
+    var val = item[column];
+    if (val === null || val === undefined) return '';
+    if (column === 'Status') return getDisplayStatusText(item);
+    return String(val).toLowerCase();
+}
+
 function renderItems() {
     const tbody = document.getElementById('inventory');
     const cardsContainer = document.getElementById('inventoryCards');
@@ -542,6 +574,18 @@ function renderItems() {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#999;">No samples found</td></tr>';
         if (cardsContainer) cardsContainer.innerHTML = '<div class="inventory-empty">No samples found</div>';
         return;
+    }
+
+    // Sort items before rendering
+    var sortedItems = allItems.slice();
+    if (sortColumn) {
+        sortedItems.sort(function(a, b) {
+            var av = getSortValue(a, sortColumn);
+            var bv = getSortValue(b, sortColumn);
+            if (av < bv) return sortDirection === 'asc' ? -1 : 1;
+            if (av > bv) return sortDirection === 'asc' ? 1 : -1;
+            return 0;
+        });
     }
 
     const isLoggedIn = currentUser !== null;
@@ -553,22 +597,26 @@ function renderItems() {
         actionsHeader.style.display = showActions ? '' : 'none';
     }
 
-    tbody.innerHTML = allItems.map(function(item) {
+    tbody.innerHTML = sortedItems.map(function(item) {
         var actionCellHtml = '';
-        if (showActions) {
-            var status = normalizeStatus(item.status || item.Status);
-            if (status !== 'LOST' && status !== 'SCRAPPED') {
-                var avail = getAvailableQty(item);
-                var total = getTotalQty(item);
-                var btns = [];
-                if (avail > 0) {
-                    btns.push('<button class="checkout-btn" onclick="event.stopPropagation();openCheckoutModal(' + item.id + ')">Checkout</button>');
-                }
-                if (avail < total) {
-                    btns.push('<button class="return-btn" onclick="event.stopPropagation();openReturnModal(' + item.id + ')">Return</button>');
-                }
-                actionCellHtml = btns.join(' ');
+        var status = normalizeStatus(item.status || item.Status);
+        if (showActions && status !== 'LOST' && status !== 'SCRAPPED') {
+            var avail = getAvailableQty(item);
+            var total = getTotalQty(item);
+            var btns = [];
+            if (avail > 0) {
+                btns.push('<button class="checkout-btn" onclick="event.stopPropagation();openCheckoutModal(' + item.id + ')">Checkout</button>');
             }
+            if (avail < total) {
+                btns.push('<button class="return-btn" onclick="event.stopPropagation();openReturnModal(' + item.id + ')">Return</button>');
+            }
+            actionCellHtml = btns.join(' ');
+        }
+        // Always show a Details button for quick access without full row click
+        if (!actionCellHtml) {
+            actionCellHtml = '<button class="view-btn" onclick="event.stopPropagation();viewItem(' + item.id + ')">Details</button>';
+        } else {
+            actionCellHtml = '<button class="view-btn" onclick="event.stopPropagation();viewItem(' + item.id + ')">Details</button> ' + actionCellHtml;
         }
         var statusText = getDisplayStatusText(item);
         var statusClass = getDisplayStatusClass(item);
@@ -922,6 +970,11 @@ async function openCheckoutModal(sampleId) {
     qtyInput.min = 1;
     qtyInput.max = availQty;
 
+    var hint = document.getElementById('checkoutMaxHint');
+    if (hint) {
+        hint.textContent = '(Max: ' + availQty + ')';
+    }
+
     const borrowerDisplay = document.getElementById('checkoutBorrowerName');
     if (currentUser) {
         borrowerDisplay.textContent = currentUser.display_name || currentUser.username || 'Unknown User';
@@ -1021,6 +1074,11 @@ async function openReturnModal(sampleId) {
         qtyInput.min = 1;
         qtyInput.max = totalCheckedOut;
         qtyInput.readOnly = false;
+
+        var hint = document.getElementById('returnMaxHint');
+        if (hint) {
+            hint.textContent = '(Max: ' + totalCheckedOut + ')';
+        }
 
         const info = document.getElementById('returnSampleInfo');
         const today = new Date().toISOString().split('T')[0];
