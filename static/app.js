@@ -612,12 +612,6 @@ function renderItems() {
             }
             actionCellHtml = btns.join(' ');
         }
-        // Always show a Details button for quick access without full row click
-        if (!actionCellHtml) {
-            actionCellHtml = '<button class="view-btn" onclick="event.stopPropagation();viewItem(' + item.id + ')">Details</button>';
-        } else {
-            actionCellHtml = '<button class="view-btn" onclick="event.stopPropagation();viewItem(' + item.id + ')">Details</button> ' + actionCellHtml;
-        }
         var statusText = getDisplayStatusText(item);
         var statusClass = getDisplayStatusClass(item);
         return '\n            <tr onclick="viewItem(' + item.id + ')" style="cursor:pointer;">\n                <td>' + escapeHtml(item.Title || '') + '</td>\n                <td>' + escapeHtml(item.SerialNum || '') + '</td>\n                <td>' + escapeHtml(item.SampleType || '') + '</td>\n                <td>' + escapeHtml(item.StorageLocationCode || '') + '</td>\n                <td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>\n                <td>' + actionCellHtml + '</td>\n            </tr>\n        ';
