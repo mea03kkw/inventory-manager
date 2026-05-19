@@ -1123,7 +1123,7 @@ async def list_items(
                 like = f"%{search}%"
                 params.extend([like, like, like])
             if status:
-                sql += " AND i.status = %s"
+                sql += ' AND i."Status" = %s'
                 params.append(status)
             if rack:
                 sql += ' AND i."StorageLocationCode" = %s'
@@ -1189,7 +1189,7 @@ async def export_items_csv(
                 like = f"%{search}%"
                 params.extend([like, like, like])
             if status:
-                sql += " AND i.status = %s"
+                sql += ' AND i."Status" = %s'
                 params.append(status)
             if rack:
                 sql += ' AND i."StorageLocationCode" = %s'
@@ -1392,7 +1392,7 @@ async def create_item(request: Request, payload: ItemIn):
     values.append(total_quantity)
 
     if is_postgres():
-        field_sql = ", ".join([f'"{f}"' for f in field_list] + ["status", "quantity", "available_quantity"])
+        field_sql = ", ".join([f'"{f}"' for f in field_list] + ['"Status"', "quantity", "available_quantity"])
     else:
         field_sql = ", ".join([f'"{f}"' for f in field_list] + ["Status", "quantity", "available_quantity"])
     placeholder_sql = ", ".join(placeholders)
@@ -1438,7 +1438,7 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
         def _check():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute('SELECT id, quantity, available_quantity, status, "UnitCount" FROM inventory WHERE id = %s', (item_id,))
+            cur.execute('SELECT id, quantity, available_quantity, "Status", "UnitCount" FROM inventory WHERE id = %s', (item_id,))
             row = cur.fetchone()
             conn.close()
             return row
@@ -1494,7 +1494,7 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
 
     if payload.Status is not None:
         if is_postgres():
-            updates.append('status = ' + ph)
+            updates.append('"Status" = ' + ph)
         else:
             updates.append('Status = ' + ph)
         values.append(payload.Status)
@@ -1614,7 +1614,7 @@ async def create_checkout(request: Request, payload: CheckoutIn):
         def _checkout():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute('SELECT quantity, available_quantity, status, "Title", "SerialNum", "SampleType", "StorageLocationCode" FROM inventory WHERE id = %s', (sample_id,))
+            cur.execute('SELECT quantity, available_quantity, "Status", "Title", "SerialNum", "SampleType", "StorageLocationCode" FROM inventory WHERE id = %s', (sample_id,))
             row = cur.fetchone()
             if not row:
                 conn.close()
@@ -1975,15 +1975,15 @@ async def get_dashboard_stats(request: Request):
             today = date.today().isoformat()
             cur.execute("SELECT COUNT(*) FROM inventory")
             total = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM inventory WHERE available_quantity > 0 AND status NOT IN ('LOST', 'SCRAPPED')")
+            cur.execute("SELECT COUNT(*) FROM inventory WHERE available_quantity > 0 AND \"Status\" NOT IN ('LOST', 'SCRAPPED')")
             in_stock = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM inventory WHERE available_quantity = 0 AND status NOT IN ('LOST', 'SCRAPPED')")
+            cur.execute("SELECT COUNT(*) FROM inventory WHERE available_quantity = 0 AND \"Status\" NOT IN ('LOST', 'SCRAPPED')")
             checked_out = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM checkout_records WHERE checkout_status = 'OUT' AND expected_return_date < %s", (today,))
             overdue = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM inventory WHERE status = 'LOST'")
+            cur.execute("SELECT COUNT(*) FROM inventory WHERE \"Status\" = 'LOST'")
             lost = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM inventory WHERE status = 'SCRAPPED'")
+            cur.execute("SELECT COUNT(*) FROM inventory WHERE \"Status\" = 'SCRAPPED'")
             scrapped = cur.fetchone()[0]
             conn.close()
             return {
@@ -2035,10 +2035,10 @@ async def get_rack_summary(request: Request):
             cur.execute("""
                 SELECT "StorageLocationCode" as rack,
                        COUNT(*) as total,
-                       SUM(CASE WHEN status = 'IN_STOCK' THEN 1 ELSE 0 END) as in_stock,
-                       SUM(CASE WHEN status = 'CHECKED_OUT' THEN 1 ELSE 0 END) as checked_out,
-                       SUM(CASE WHEN status = 'LOST' THEN 1 ELSE 0 END) as lost,
-                       SUM(CASE WHEN status = 'SCRAPPED' THEN 1 ELSE 0 END) as scrapped
+                       SUM(CASE WHEN "Status" = 'IN_STOCK' THEN 1 ELSE 0 END) as in_stock,
+                       SUM(CASE WHEN "Status" = 'CHECKED_OUT' THEN 1 ELSE 0 END) as checked_out,
+                       SUM(CASE WHEN "Status" = 'LOST' THEN 1 ELSE 0 END) as lost,
+                       SUM(CASE WHEN "Status" = 'SCRAPPED' THEN 1 ELSE 0 END) as scrapped
                 FROM inventory
                 GROUP BY "StorageLocationCode"
                 ORDER BY "StorageLocationCode"
