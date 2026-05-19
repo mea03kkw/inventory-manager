@@ -1334,3 +1334,28 @@ button.btn-pending {
         max-width: 100%;
     }
 }
+
+/* ============================================================
+   Footer
+   ============================================================ */
+
+.app-footer {
+    text-align: center;
+    padding: 24px 12px 16px;
+    color: #999;
+    font-size: 12px;
+    line-height: 1.6;
+    border-top: 1px solid #e0e0e0;
+    margin-top: 24px;
+}
+
+.app-footer__version {
+    font-weight: 600;
+    color: #777;
+    margin-bottom: 4px;
+}
+
+.app-footer__contact {
+    color: #aaa;
+    font-size: 11px;
+}

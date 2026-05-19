@@ -1892,7 +1892,7 @@ async def get_checkout_records(sample_id: Optional[int] = None):
         cur = await conn.cursor()
         if sample_id:
             await cur.execute("""
-                SELECT id, sample_title, sample_serial, sample_type,
+                SELECT id, quantity, sample_title, sample_serial, sample_type,
                        borrower_name, borrower_department, borrower_email,
                        checkout_date, expected_return_date, actual_return_date,
                        checkout_status, checkout_remarks, return_remarks
@@ -1902,7 +1902,7 @@ async def get_checkout_records(sample_id: Optional[int] = None):
             """, (sample_id,))
         else:
             await cur.execute("""
-                SELECT id, sample_title, sample_serial, sample_type,
+                SELECT id, quantity, sample_title, sample_serial, sample_type,
                        borrower_name, borrower_department, borrower_email,
                        checkout_date, expected_return_date, actual_return_date,
                        checkout_status, checkout_remarks, return_remarks
