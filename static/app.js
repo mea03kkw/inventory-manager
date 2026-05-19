@@ -363,6 +363,20 @@ function setButtonPending(button, isPending, pendingLabel) {
     }
 }
 
+function toggleHistorySection() {
+    const container = document.getElementById('historyContainer');
+    const arrow = document.getElementById('historyArrow');
+    if (!container || !arrow) return;
+
+    if (container.classList.contains('hidden')) {
+        container.classList.remove('hidden');
+        arrow.textContent = '\u25b2';
+    } else {
+        container.classList.add('hidden');
+        arrow.textContent = '\u25bc';
+    }
+}
+
 // ============================================================
 // Modal Functions
 // ============================================================
@@ -1012,45 +1026,56 @@ async function viewItem(id) {
         var totalQty = getTotalQty(item);
 
         let historyHtml = '';
-        if (item.checkout_history && item.checkout_history.length > 0) {
+        var historyCount = (item.checkout_history && item.checkout_history.length) || 0;
+        if (historyCount > 0) {
             historyHtml = `
-                <div class="history-section">
-                    <h4>Borrow/Return History</h4>
-                    <div class="table-container">
-                        <table>
-                            <thead>
+                <div class="history-table-wrapper">
+                    <table class="detail-history-table">
+                        <thead>
+                            <tr>
+                                <th>Borrower</th>
+                                <th>Department</th>
+                                <th>Qty</th>
+                                <th>Checkout</th>
+                                <th>Expected Return</th>
+                                <th>Actual Return</th>
+                                <th>Status</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${item.checkout_history.map(h => `
                                 <tr>
-                                    <th>Borrower</th>
-                                    <th>Department</th>
-                                    <th>Qty</th>
-                                    <th>Checkout</th>
-                                    <th>Expected Return</th>
-                                    <th>Actual Return</th>
-                                    <th>Status</th>
-                                    <th>Remarks</th>
+                                    <td>${escapeHtml(h.borrower_name || '')}</td>
+                                    <td>${escapeHtml(h.borrower_department || '')}</td>
+                                    <td>${h.quantity || 1}</td>
+                                    <td>${escapeHtml(h.checkout_date || '')}</td>
+                                    <td>${escapeHtml(h.expected_return_date || '')}</td>
+                                    <td>${escapeHtml(h.actual_return_date || '')}</td>
+                                    <td><span class="status-badge ${getStatusBadgeClass(h.checkout_status)}">${h.checkout_status}</span></td>
+                                    <td>${escapeHtml(h.checkout_remarks || h.return_remarks || '')}</td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                ${item.checkout_history.map(h => `
-                                    <tr>
-                                        <td>${escapeHtml(h.borrower_name || '')}</td>
-                                        <td>${escapeHtml(h.borrower_department || '')}</td>
-                                        <td>${h.quantity || 1}</td>
-                                        <td>${escapeHtml(h.checkout_date || '')}</td>
-                                        <td>${escapeHtml(h.expected_return_date || '')}</td>
-                                        <td>${escapeHtml(h.actual_return_date || '')}</td>
-                                        <td><span class="status-badge ${getStatusBadgeClass(h.checkout_status)}">${h.checkout_status}</span></td>
-                                        <td>${escapeHtml(h.checkout_remarks || h.return_remarks || '')}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                            `).join('')}
+                        </tbody>
+                    </table>
                 </div>
             `;
         } else {
-            historyHtml = `<p style="color:#999;">No checkout history</p>`;
+            historyHtml = `<p style="color:#999;padding:12px;">No checkout history</p>`;
         }
+        var historySectionHtml = `
+            <div class="detail-history-section">
+                <button type="button" class="history-toggle" onclick="toggleHistorySection()">
+                    <span>Borrow/Return History (<span id="historyCount">${historyCount}</span> records)</span>
+                    <span id="historyArrow">\u25bc</span>
+                </button>
+                <div id="historyContainer" class="history-container hidden">
+                    <div class="history-table-wrapper">
+                        ${historyHtml}
+                    </div>
+                </div>
+            </div>
+        `;
 
         var stockDisplayHtml = '';
         var stockStatusClass = getDisplayStatusClass(item);
@@ -1059,7 +1084,7 @@ async function viewItem(id) {
             <div class="detail-row">
                 <div>
                     <div class="detail-label">Stock</div>
-                    <div class="detail-value" style="font-weight:600;">${availQty} / ${totalQty} <span class="status-badge ${stockStatusClass}">${stockStatusText}</span></div>
+                    <div class="detail-value"><span class="detail-stock-value">${availQty} / ${totalQty} <span class="status-badge ${stockStatusClass}">${stockStatusText}</span></span></div>
                 </div>
                 <div>
                     <div class="detail-label">Unit Measure</div>
@@ -1138,14 +1163,19 @@ async function viewItem(id) {
                 <div class="detail-label">Notes</div>
                 <div class="detail-value" style="margin-top:5px;">${escapeHtml(item.Notes || '')}</div>
             </div>
-            ${historyHtml}
-            <div style="margin-top:20px;padding-top:20px;border-top:1px solid #ddd;display:flex;gap:10px;">
+            <div class="form-actions">
                 ${availQty > 0 && status !== 'LOST' && status !== 'SCRAPPED' ? `<button class="checkout-btn" onclick="closeModal(); openCheckoutModal(${item.id})">Checkout</button>` : ''}
                 ${hasActiveCheckouts && status !== 'LOST' && status !== 'SCRAPPED' ? `<button class="return-btn" onclick="closeModal(); openReturnModal(${item.id})">Return</button>` : ''}
                 ${isAdmin ? `<button class="edit" onclick="closeModal(); startEdit(${item.id})">Edit</button>` : ''}
                 ${isAdmin ? `<button class="delete" onclick="closeModal(); deleteSample(${item.id})">Delete</button>` : ''}
             </div>
+            ${historySectionHtml}
         `;
+
+        const historyContainer = document.getElementById('historyContainer');
+        const historyArrow = document.getElementById('historyArrow');
+        if (historyContainer) historyContainer.classList.add('hidden');
+        if (historyArrow) historyArrow.textContent = '\u25bc';
 
         openModal('detailModal');
     } catch (err) {
