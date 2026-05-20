@@ -368,6 +368,10 @@ function getStockState(sample) {
     };
 }
 
+function isAuthenticatedUser() {
+    return currentUser !== null;
+}
+
 function matchesStatusFilter(sample, selectedStatus) {
     if (!selectedStatus || selectedStatus === '') {
         return true;
@@ -588,19 +592,18 @@ function renderItems() {
         });
     }
 
-    const isLoggedIn = currentUser !== null;
-    const isAdmin = isLoggedIn && currentUser.is_admin;
-    const showActions = isLoggedIn && !isAdmin;
+    const canBorrowReturn = isAuthenticatedUser();
+    const isAdmin = currentUser && currentUser.is_admin;
 
     const actionsHeader = document.getElementById('actionsHeader');
     if (actionsHeader) {
-        actionsHeader.style.display = showActions ? '' : 'none';
+        actionsHeader.style.display = canBorrowReturn ? '' : 'none';
     }
 
     tbody.innerHTML = sortedItems.map(function(item) {
         var actionCellHtml = '';
         var status = normalizeStatus(item.status || item.Status);
-        if (showActions && status !== 'LOST' && status !== 'SCRAPPED') {
+        if (canBorrowReturn && status !== 'LOST' && status !== 'SCRAPPED') {
             var avail = getAvailableQty(item);
             var total = getTotalQty(item);
             var btns = [];
@@ -629,7 +632,7 @@ function renderItems() {
 
             var statusText = getDisplayStatusText(item);
             var statusClass = getDisplayStatusClass(item);
-            var actionHtml = getPrimaryActionHtml(item, showActions);
+            var actionHtml = getPrimaryActionHtml(item, canBorrowReturn);
 
             return '\n<div class="inventory-card" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__identity">\n    <div class="inventory-card__title">' + escapeHtml(item.Title || '') + '</div>\n    <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n  </div>\n  <div class="inventory-card__status-row">\n    <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n    ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n  </div>\n  ' + metaHtml + '\n</div>';
         }).join('');
@@ -944,6 +947,10 @@ async function deleteSample(id) {
 // ============================================================
 
 async function openCheckoutModal(sampleId) {
+    if (!isAuthenticatedUser()) {
+        showToast('Please log in to checkout samples', 'error');
+        return;
+    }
     const item = allItems.find(i => String(i.id) === String(sampleId));
     if (!item) return;
 
@@ -1039,6 +1046,10 @@ async function submitCheckout(e) {
 // ============================================================
 
 async function openReturnModal(sampleId) {
+    if (!isAuthenticatedUser()) {
+        showToast('Please log in to return samples', 'error');
+        return;
+    }
     const item = allItems.find(i => String(i.id) === String(sampleId));
     if (!item) return;
 
@@ -1150,6 +1161,12 @@ async function viewItem(id) {
         var availQty = getAvailableQty(item);
         var totalQty = getTotalQty(item);
 
+        const isAuthenticated = isAuthenticatedUser();
+        const isAdmin = currentUser && currentUser.is_admin;
+        const isExceptionalStatus = status === 'LOST' || status === 'SCRAPPED';
+        const canCheckout = isAuthenticated && !isExceptionalStatus && availQty > 0;
+        const canReturn = isAuthenticated && !isExceptionalStatus && item.checkout_history && item.checkout_history.some(function(h) { return h.checkout_status === 'OUT'; });
+
         let historyHtml = '';
         var historyCount = (item.checkout_history && item.checkout_history.length) || 0;
         if (historyCount > 0) {
@@ -1202,26 +1219,55 @@ async function viewItem(id) {
             </div>
         `;
 
-        var stockDisplayHtml = '';
         var stockStatusClass = getDisplayStatusClass(item);
         var stockStatusText = getDisplayStatusText(item);
-        stockDisplayHtml = `
-            <div class="detail-row">
-                <div>
-                    <div class="detail-label">Stock</div>
-                    <div class="detail-value"><span class="detail-stock-value">${availQty} / ${totalQty} <span class="status-badge ${stockStatusClass}">${stockStatusText}</span></span></div>
-                </div>
-                <div>
-                    <div class="detail-label">Unit Measure</div>
-                    <div class="detail-value">${escapeHtml(item.UnitMeasure || '')}</div>
-                </div>
-            </div>
-        `;
 
-        var hasActiveCheckouts = item.checkout_history && item.checkout_history.some(function(h) { return h.checkout_status === 'OUT'; });
+        var statusRowHtml = '';
+        var stockRowHtml = '';
+
+        if (isExceptionalStatus) {
+            statusRowHtml = `
+                <div class="detail-row">
+                    <div>
+                        <div class="detail-label">Status</div>
+                        <div class="detail-value"><span class="status-badge ${stockStatusClass}">${stockStatusText}</span></div>
+                    </div>
+                    <div>
+                        <div class="detail-label">Stock</div>
+                        <div class="detail-value">${availQty} / ${totalQty}</div>
+                    </div>
+                </div>
+            `;
+        } else {
+            stockRowHtml = `
+                <div class="detail-row">
+                    <div>
+                        <div class="detail-label">Stock</div>
+                        <div class="detail-value"><span class="detail-stock-value"><span class="status-badge ${stockStatusClass}">${stockStatusText}</span></span></div>
+                    </div>
+                    <div>
+                        <div class="detail-label">Unit Measure</div>
+                        <div class="detail-value">${escapeHtml(item.UnitMeasure || '')}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        var actionsHtml = '';
+        if (isAuthenticated) {
+            var btns = [];
+            if (canCheckout) btns.push('<button class="checkout-btn" onclick="closeModal(); openCheckoutModal(' + item.id + ')">Checkout</button>');
+            if (canReturn) btns.push('<button class="return-btn" onclick="closeModal(); openReturnModal(' + item.id + ')">Return</button>');
+            if (isAdmin) btns.push('<button class="edit" onclick="closeModal(); startEdit(' + item.id + ')">Edit</button>');
+            if (isAdmin) btns.push('<button class="delete" onclick="closeModal(); deleteSample(' + item.id + ')">Delete</button>');
+            if (btns.length > 0) {
+                actionsHtml = '<div class="form-actions">' + btns.join('') + '</div>';
+            }
+        } else {
+            actionsHtml = '<div class="guest-hint">Login to checkout or return samples</div>';
+        }
 
         const content = document.getElementById('sampleDetailContent');
-        const isAdmin = currentUser && currentUser.is_admin;
         content.innerHTML = `
             <div class="detail-row">
                 <div>
@@ -1278,22 +1324,15 @@ async function viewItem(id) {
                     <div class="detail-label">Date Received</div>
                     <div class="detail-value">${escapeHtml(item.DateReceived || '')}</div>
                 </div>
-                <div>
-                    <div class="detail-label">Status</div>
-                    <div class="detail-value"><span class="status-badge ${getDisplayStatusClass(item)}">${getDisplayStatusText(item)}</span></div>
-                </div>
+                ${isExceptionalStatus ? '<div><div class="detail-label">Unit Measure</div><div class="detail-value">' + escapeHtml(item.UnitMeasure || '') + '</div></div>' : '<div></div>'}
             </div>
-            ${stockDisplayHtml}
+            ${statusRowHtml}
+            ${stockRowHtml}
             <div class="detail-row" style="grid-column: 1 / -1;">
                 <div class="detail-label">Notes</div>
                 <div class="detail-value" style="margin-top:5px;">${escapeHtml(item.Notes || '')}</div>
             </div>
-            <div class="form-actions">
-                ${availQty > 0 && status !== 'LOST' && status !== 'SCRAPPED' ? `<button class="checkout-btn" onclick="closeModal(); openCheckoutModal(${item.id})">Checkout</button>` : ''}
-                ${hasActiveCheckouts && status !== 'LOST' && status !== 'SCRAPPED' ? `<button class="return-btn" onclick="closeModal(); openReturnModal(${item.id})">Return</button>` : ''}
-                ${isAdmin ? `<button class="edit" onclick="closeModal(); startEdit(${item.id})">Edit</button>` : ''}
-                ${isAdmin ? `<button class="delete" onclick="closeModal(); deleteSample(${item.id})">Delete</button>` : ''}
-            </div>
+            ${actionsHtml}
             ${historySectionHtml}
         `;
 

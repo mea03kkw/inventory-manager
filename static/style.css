@@ -1192,20 +1192,7 @@ button.view-btn:hover {
         flex-direction: column;
     }
 
-    /* Mobile detail modal action buttons */
-    #sampleDetailContent .form-actions button {
-        flex: 1 1 100%;
-        min-height: 48px;
-        padding: 10px 16px;
-        font-size: 15px;
-        border-radius: 10px;
-    }
-
     /* Mobile history — hide non-essential columns */
-    .history-table-wrapper {
-        overflow-x: hidden;
-    }
-
     .detail-history-table {
         min-width: 0;
         width: 100%;
@@ -1221,18 +1208,6 @@ button.view-btn:hover {
     .detail-history-table th:nth-child(8),
     .detail-history-table td:nth-child(8) {
         display: none;
-    }
-
-    .detail-history-table th,
-    .detail-history-table td {
-        padding: 10px 8px;
-        font-size: 13px;
-        word-break: break-word;
-        vertical-align: top;
-    }
-
-    .history-toggle {
-        font-size: 14px;
     }
 
     /* Modal detail grid — single column on mobile */
@@ -1253,6 +1228,63 @@ button.view-btn:hover {
     #sampleDetailContent .detail-row > div {
         min-width: 0;
     }
+
+  .modal {
+    padding: 10px;
+  }
+
+  .modal-content {
+    width: calc(100vw - 20px);
+    margin-top: 20px;
+    border-radius: 10px;
+  }
+
+  .modal-content.detail-modal {
+    max-width: none;
+  }
+
+  .modal-header {
+    padding: 14px 16px;
+  }
+
+  .modal-header h3 {
+    font-size: 16px;
+  }
+
+  #checkoutSampleInfo,
+  #returnSampleInfo,
+  #sampleDetailContent {
+    padding: 12px 16px;
+  }
+
+  #sampleDetailContent .detail-row {
+    gap: 6px;
+    padding: 8px 0;
+  }
+
+  #sampleDetailContent .detail-label {
+    margin-bottom: 2px;
+  }
+
+  #sampleDetailContent .detail-value {
+    padding: 4px 10px;
+    min-height: 30px;
+  }
+
+  .history-toggle {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .history-table-wrapper {
+    max-height: 160px;
+  }
+
+  .history-table-wrapper th,
+  .history-table-wrapper td {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
 }
 
 @media screen and (max-width: 480px) {
@@ -1264,6 +1296,106 @@ button.view-btn:hover {
         padding: 10px 8px;
         font-size: 13px;
     }
+
+  .modal {
+    padding: 8px;
+  }
+
+  .modal-content {
+    width: calc(100vw - 16px);
+    margin-top: 12px;
+    border-radius: 8px;
+  }
+
+  .modal-header {
+    padding: 12px 14px;
+  }
+
+  .modal-header h3 {
+    font-size: 15px;
+  }
+
+  #checkoutSampleInfo,
+  #returnSampleInfo,
+  #sampleDetailContent {
+    padding: 10px 14px;
+  }
+
+  #sampleDetailContent .detail-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 8px 0;
+  }
+
+  #sampleDetailContent .detail-label {
+    font-size: 11px;
+    margin-bottom: 2px;
+  }
+
+  #sampleDetailContent .detail-value {
+    font-size: 14px;
+    padding: 4px 10px;
+    min-height: 28px;
+  }
+
+  .detail-stock-value {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  #sampleDetailContent .form-actions {
+    gap: 8px;
+  }
+
+  #sampleDetailContent .form-actions button {
+    flex: 1 1 auto;
+    min-width: 100px;
+  }
+
+  .input-group-suffix {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .history-toggle {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .history-table-wrapper {
+    max-height: 140px;
+  }
+}
+
+@media screen and (max-width: 380px) {
+  .input-group {
+    flex-direction: column;
+  }
+
+  .input-group input {
+    border-right: 1px solid #ddd;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 0;
+  }
+
+  .input-group-suffix {
+    border-left: 1px solid #ddd;
+    border-top: none;
+    border-top-right-radius: 0;
+    border-bottom-left-radius: 6px;
+    justify-content: center;
+    padding: 10px 12px;
+  }
+}
+
+/* ============================================================
+   Guest Hint
+   ============================================================ */
+
+.guest-hint {
+    font-size: 13px;
+    color: #999;
+    padding: 8px 0;
 }
 
 /* ============================================================
@@ -1374,4 +1506,114 @@ button.btn-pending {
 .app-footer__contact {
     color: #aaa;
     font-size: 11px;
+}
+
+/* ============================================================
+   Login Modal Density
+   ============================================================ */
+
+@media screen and (max-width: 768px) {
+  #loginModal .modal-header {
+    padding: 12px 16px;
+  }
+
+  #loginModal .modal-header h3 {
+    font-size: 15px;
+  }
+
+  #loginModal .form-grid {
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 12px 16px 0;
+  }
+
+  #loginModal .form-group label {
+    margin-bottom: 4px;
+    font-size: 12px;
+  }
+
+  #loginModal .form-group input {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  #loginModal .input-group-suffix {
+    font-size: 12px;
+  }
+
+  #loginModal .form-actions {
+    gap: 10px;
+    padding: 14px 16px 16px;
+  }
+
+  #loginModal .form-actions button {
+    padding: 10px 18px;
+    font-size: 14px;
+    border-radius: 8px;
+  }
+
+  #loginModal .form-actions button[type="submit"],
+  #loginModal .form-actions button[type="button"] {
+    min-height: 44px;
+  }
+
+  #loginModal .modal-content > div[style*="Use the part before"],
+  #loginModal .modal-content > div[style*="Dev accounts"] {
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    margin-top: 8px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  #loginModal .modal-header {
+    padding: 10px 14px;
+  }
+
+  #loginModal .modal-header h3 {
+    font-size: 14px;
+  }
+
+  #loginModal .form-grid {
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 10px 14px 0;
+  }
+
+  #loginModal .form-group label {
+    margin-bottom: 4px;
+    font-size: 11px;
+  }
+
+  #loginModal .form-group input {
+    padding: 9px 12px;
+    font-size: 14px;
+  }
+
+  #loginModal .input-group-suffix {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  #loginModal .form-actions {
+    gap: 8px;
+    padding: 12px 14px 14px;
+  }
+
+  #loginModal .form-actions button {
+    padding: 9px 16px;
+    font-size: 14px;
+    min-height: 42px;
+  }
+
+  #loginModal .modal-content > div[style*="Use the part before"],
+  #loginModal .modal-content > div[style*="Dev accounts"] {
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+    margin-top: 6px !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
 }
