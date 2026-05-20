@@ -118,6 +118,15 @@ function openLoginModal() {
     document.getElementById('loginUsername').value = '';
     document.getElementById('loginPassword').value = '';
     openModal('loginModal');
+    // Load admin contact email
+    const emailSpan = document.getElementById('adminContactEmail');
+    if (emailSpan) {
+        fetch('/api/settings/admin-contact').then(r => r.json()).then(contact => {
+            emailSpan.textContent = contact.email || 'jenny.yc.cheung@philips.com';
+        }).catch(() => {
+            emailSpan.textContent = 'jenny.yc.cheung@philips.com';
+        });
+    }
 }
 
 async function submitLogin(e) {
