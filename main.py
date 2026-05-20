@@ -410,19 +410,6 @@ async def require_admin(request: Request) -> UserOut:
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-# Serve CSS and JS at root level for VS Code compatibility
-@app.get("/style.css", response_class=HTMLResponse)
-async def serve_css():
-    with open("static/style.css") as f:
-        return f.read()
-
-
-@app.get("/app.js", response_class=HTMLResponse)
-async def serve_js():
-    with open("static/app.js") as f:
-        return f.read()
-
-
 # ============================================================================
 # Root route - serve frontend
 # ============================================================================
