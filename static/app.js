@@ -1340,9 +1340,7 @@ async function viewItem(id) {
                     <span id="historyArrow">\u25bc</span>
                 </button>
                 <div id="historyContainer" class="history-container hidden">
-                    <div class="history-table-wrapper">
-                        ${historyHtml}
-                    </div>
+                    ${historyHtml}
                 </div>
             </div>
         `;
@@ -1389,7 +1387,7 @@ async function viewItem(id) {
             if (isAdmin) btns.push('<button class="edit" onclick="closeModal(); startEdit(' + item.id + ')">Edit</button>');
             if (isAdmin) btns.push('<button class="delete" onclick="closeModal(); deleteSample(' + item.id + ')">Delete</button>');
             if (btns.length > 0) {
-                actionsHtml = '<div class="form-actions">' + btns.join('') + '</div>';
+                actionsHtml = '<div class="detail-actions">' + btns.join('') + '</div>';
             }
         } else {
             actionsHtml = '<div class="guest-hint">Login to checkout or return samples</div>';

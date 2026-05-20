@@ -831,7 +831,8 @@ button.view-btn:hover {
 }
 
 .modal-content.detail-modal {
-    max-width: 850px;
+    max-width: 1280px;
+    width: calc(100vw - 40px);
 }
 
 .modal-header {
@@ -931,13 +932,28 @@ button.view-btn:hover {
     align-items: center;
 }
 
-/* Buttons in Detail Modal */
-#sampleDetailContent .form-actions {
+/* Detail Action Buttons */
+.detail-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
     margin-top: 15px;
+    padding-top: 20px;
+    border-top: 1px solid #f0f0f0;
 }
 
-#sampleDetailContent .form-actions button {
-    flex: 1;
+.detail-actions button {
+    min-height: 44px;
+    max-height: 52px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    width: 100%;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0;
 }
 
 .detail-stock-value {
@@ -977,6 +993,7 @@ button.view-btn:hover {
 
 .history-table-wrapper {
     max-height: 260px;
+    overflow-x: auto;
     overflow-y: auto;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
@@ -987,14 +1004,9 @@ button.view-btn:hover {
     min-width: 760px;
 }
 
-#sampleDetailContent .form-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
 
-#sampleDetailContent .form-actions button {
-    flex: 1 1 160px;
+.history-table-wrapper table {
+    min-width: 760px;
 }
 
 .history-toggle span:first-child {
@@ -1192,22 +1204,13 @@ button.view-btn:hover {
         flex-direction: column;
     }
 
-    /* Mobile history — hide non-essential columns */
+    /* Mobile history — keep all columns visible, rely on horizontal scroll */
     .detail-history-table {
-        min-width: 0;
-        width: 100%;
-        table-layout: fixed;
+        min-width: 700px;
     }
 
-    .detail-history-table th:nth-child(2),
-    .detail-history-table td:nth-child(2),
-    .detail-history-table th:nth-child(5),
-    .detail-history-table td:nth-child(5),
-    .detail-history-table th:nth-child(6),
-    .detail-history-table td:nth-child(6),
-    .detail-history-table th:nth-child(8),
-    .detail-history-table td:nth-child(8) {
-        display: none;
+    .history-table-wrapper {
+        max-height: 160px;
     }
 
     /* Modal detail grid — single column on mobile */
@@ -1241,6 +1244,11 @@ button.view-btn:hover {
 
   .modal-content.detail-modal {
     max-width: none;
+  }
+
+  .detail-actions {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .modal-header {
@@ -1343,13 +1351,9 @@ button.view-btn:hover {
     row-gap: 4px;
   }
 
-  #sampleDetailContent .form-actions {
+  .detail-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
-  }
-
-  #sampleDetailContent .form-actions button {
-    flex: 1 1 auto;
-    min-width: 100px;
   }
 
   .input-group-suffix {
@@ -1385,6 +1389,52 @@ button.view-btn:hover {
     border-bottom-left-radius: 6px;
     justify-content: center;
     padding: 10px 12px;
+  }
+}
+
+/* ============================================================
+   Responsive — Medium / Tablet: 768px to 1199px
+   ============================================================ */
+@media screen and (min-width: 768px) and (max-width: 1199px) {
+  .modal-content.detail-modal {
+    width: calc(100vw - 20px);
+    max-width: none;
+  }
+
+  #sampleDetailContent .detail-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    padding: 12px 0;
+  }
+
+  .detail-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .history-table-wrapper {
+    max-height: 200px;
+  }
+}
+
+/* ============================================================
+   Responsive — Desktop / Large: >= 1200px
+   ============================================================ */
+@media screen and (min-width: 1200px) {
+  .modal-content.detail-modal {
+    width: 90vw;
+    max-width: 1280px;
+  }
+
+  #sampleDetailContent .detail-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    padding: 14px 0;
+  }
+
+  .detail-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
   }
 }
 
