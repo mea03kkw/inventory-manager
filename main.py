@@ -446,6 +446,7 @@ def init_db():
             )
         """)
         # Add email column if not exists
+        # Add email column if not exists
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)")
         # Add unique index for non-null emails
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL")
@@ -463,6 +464,12 @@ def init_db():
                 is_active INTEGER DEFAULT 1,
                 must_change_password INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             )
         """)
         # Add email column if not exists
@@ -967,6 +974,30 @@ async def list_users(request: Request):
             {"id": r["id"], "username": r["username"], "email": r["email"] or "", "is_admin": bool(r["is_admin"]), "is_active": bool(r["is_active"]), "must_change_password": bool(r["must_change_password"])}
             for r in rows
         ]
+
+
+@app.get("/api/settings/admin-contact")
+async def get_admin_contact():
+    """Get the admin user's display name and email for contact purposes."""
+    database_url = _get_db_url()
+    if is_postgres():
+        def _query():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT display_name, email FROM users WHERE is_admin = TRUE AND is_active = TRUE LIMIT 1")
+            row = cur.fetchone()
+            conn.close()
+            return row
+        row = await run_in_threadpool(_query)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT display_name, email FROM users WHERE is_admin = 1 AND is_active = 1 LIMIT 1")
+        row = await cur.fetchone()
+        await conn.close()
+    if row and row[1]:
+        return {"name": row[0] or "System Administrator", "email": row[1]}
+    return {"name": "System Administrator", "email": ""}
 
 
 @app.get("/api/users/{user_id}")

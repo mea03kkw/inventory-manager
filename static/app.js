@@ -164,20 +164,37 @@ function showInfoModal(title, message) {
 }
 
 function showRegisterInfo() {
-    showInfoModal('Registration',
-        'Account registration is restricted.<br><br>' +
-        'Please contact <strong>Jenny Cheung</strong> at ' +
-        '<a href="mailto:jenny.yc.cheung@philips.com" style="color:#3f51b5;text-decoration:underline;">jenny.yc.cheung@philips.com</a> ' +
-        'for account setup.'
-    );
+    fetch('/api/settings/admin-contact').then(r => r.json()).then(contact => {
+        const name = contact.name || 'System Administrator';
+        const email = contact.email || 'jenny.yc.cheung@philips.com';
+        const link = email ? `<a href="mailto:${escapeHtml(email)}" style="color:#3f51b5;text-decoration:underline;">${escapeHtml(email)}</a>` : 'your system administrator';
+        showInfoModal('Registration',
+            'Account registration is restricted.<br><br>' +
+            `Please contact <strong>${escapeHtml(name)}</strong> at ${link} for account setup.`
+        );
+    }).catch(() => {
+        showInfoModal('Registration',
+            'Account registration is restricted.<br><br>' +
+            'Please contact your system administrator for account setup.'
+        );
+    });
 }
 
 function showForgotPasswordInfo() {
-    showInfoModal('Forgot Password',
-        'Password reset is handled by the administrator.<br><br>' +
-        'Please contact <strong>Jenny Cheung</strong> at ' +
-        '<a href="mailto:jenny.yc.cheung@philips.com" style="color:#3f51b5;text-decoration:underline;">jenny.yc.cheung@philips.com</a>.'
-    );
+    fetch('/api/settings/admin-contact').then(r => r.json()).then(contact => {
+        const name = contact.name || 'System Administrator';
+        const email = contact.email || 'jenny.yc.cheung@philips.com';
+        const link = email ? `<a href="mailto:${escapeHtml(email)}" style="color:#3f51b5;text-decoration:underline;">${escapeHtml(email)}</a>` : 'your system administrator';
+        showInfoModal('Forgot Password',
+            'Password reset is handled by the administrator.<br><br>' +
+            `Please contact <strong>${escapeHtml(name)}</strong> at ${link}.`
+        );
+    }).catch(() => {
+        showInfoModal('Forgot Password',
+            'Password reset is handled by the administrator.<br><br>' +
+            'Please contact your system administrator.'
+        );
+    });
 }
 
 async function submitRegister(e) {
