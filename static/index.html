@@ -139,6 +139,31 @@
 
     <!-- Users Section -->
     <div id="users-section" class="section hidden">
+        <div class="add-form" id="createUserForm">
+            <h3>Create User</h3>
+            <div class="form-grid">
+                <div class="form-group full-width">
+                    <label for="createUserEmail">Full Email Address</label>
+                    <input type="email" id="createUserEmail" required placeholder="name@philips.com">
+                </div>
+                <div class="form-group">
+                    <label>Derived Username</label>
+                    <div id="createUserDerivedUsername" style="padding:12px 14px;background:#f5f5f5;border-radius:6px;font-size:15px;color:#888;">(auto-derived from email)</div>
+                </div>
+                <div class="form-group">
+                    <label for="createUserRole">Role</label>
+                    <select id="createUserRole">
+                        <option value="user">Regular User</option>
+                        <option value="admin">System Administrator</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" onclick="adminCreateUser()">Create User</button>
+            </div>
+            <div id="createUserResult" style="display:none;margin-top:15px;padding:15px;background:#e8f5e9;border-radius:8px;border-left:4px solid #2e7d32;"></div>
+        </div>
+
         <div class="table-container" style="margin-top:20px;">
             <table>
                 <thead>
@@ -155,6 +180,7 @@
                 </tbody>
             </table>
         </div>
+        <div id="usersCards" class="users-cards"></div>
     </div>
 
 <!-- Add/Edit Modal -->
@@ -362,42 +388,63 @@
                 <button type="button" onclick="closeModal()">Cancel</button>
             </div>
         </form>
-        <div style="padding:0 25px;color:#666;font-size:13px;margin-top:15px;">
+        <div style="padding:0 25px;color:#666;font-size:13px;margin-top:10px;">
             Use the part before @philips.com as your username
         </div>
-        <div style="padding:0 25px;color:#666;font-size:13px;margin-top:5px;">
-            Dev accounts: admin / admin123 or user / user123
+        <div style="padding:0 25px 24px;margin-top:8px;font-size:13px;line-height:1.8;">
+            <span style="color:#999;">Need an account?</span>
+            <a class="login-help-link" onclick="showRegisterInfo()">Contact Jenny</a>
+            <span style="color:#ddd;margin:0 8px;">|</span>
+            <span style="color:#999;">Forgot password?</span>
+            <a class="login-help-link" onclick="showForgotPasswordInfo()">Contact Jenny</a>
         </div>
     </div>
 </div>
 
-<!-- Register Modal -->
-<div id="registerModal" class="modal" onclick="if(event.target===this)closeModal()">
-    <div class="modal-content">
+<!-- Info Modal (Register / Forgot Password) -->
+<div id="infoModal" class="modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content" style="max-width:480px;">
         <div class="modal-header">
-            <h3>Register</h3>
+            <h3 id="infoModalTitle">Information</h3>
             <button class="close-btn" onclick="closeModal()">&times;</button>
         </div>
-        <form onsubmit="submitRegister(event)">
-            <div class="form-grid" style="padding:25px;">
-                <div class="form-group full-width">
-                    <label for="registerEmail">Philips Email</label>
-                    <input type="email" id="registerEmail" required placeholder="name@philips.com">
+        <div style="padding:30px 25px;text-align:center;">
+            <div id="infoModalMessage" style="font-size:15px;color:#555;line-height:1.6;margin-bottom:20px;"></div>
+            <button class="edit" onclick="closeModal()" style="padding:10px 28px;font-size:14px;font-weight:600;">OK</button>
+        </div>
+    </div>
+</div>
+
+<!-- Change Password Modal -->
+<div id="changePasswordModal" class="modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Change Password</h3>
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <form onsubmit="submitChangePassword(event)">
+            <div class="form-grid" style="padding:18px 22px 6px;gap:10px;">
+                <div class="form-group full-width" id="changePasswordOldGroup">
+                    <label for="changePasswordOld">Old Password</label>
+                    <input type="password" id="changePasswordOld" required style="padding:9px 12px;font-size:14px;">
                 </div>
                 <div class="form-group full-width">
-                    <label for="registerPassword">Password</label>
-                    <input type="password" id="registerPassword" required>
+                    <label for="changePasswordNew">New Password</label>
+                    <input type="password" id="changePasswordNew" required style="padding:9px 12px;font-size:14px;">
                 </div>
                 <div class="form-group full-width">
-                    <label for="registerConfirmPassword">Confirm Password</label>
-                    <input type="password" id="registerConfirmPassword" required>
+                    <label for="changePasswordConfirm">Confirm New Password</label>
+                    <input type="password" id="changePasswordConfirm" required style="padding:9px 12px;font-size:14px;">
                 </div>
             </div>
-            <div class="form-actions" style="padding:0 25px 25px;">
-                <button type="submit">Register</button>
-                <button type="button" onclick="closeModal()">Cancel</button>
+            <div style="padding:0 22px 8px;font-size:12px;color:#999;">Minimum 8 characters. Do not reuse your current password.</div>
+            <div class="form-actions" style="padding:0 22px 18px;">
+                <button type="submit" style="padding:10px 22px;font-size:14px;">Change Password</button>
+                <button type="button" onclick="closeModal()" style="padding:10px 22px;font-size:14px;">Cancel</button>
             </div>
         </form>
+        <div id="changePasswordError" style="padding:0 22px 12px;color:#c62828;font-size:13px;display:none;"></div>
+        <div id="changePasswordSuccess" style="padding:0 22px 12px;color:#2e7d32;font-size:13px;display:none;"></div>
     </div>
 </div>
 
@@ -457,14 +504,6 @@
                     <label>Username</label>
                     <div id="resetPasswordUsername" style="padding:12px 14px;background:#f5f5f5;border-radius:6px;font-size:15px;color:#333;"></div>
                 </div>
-                <div class="form-group full-width">
-                    <label for="resetPasswordNew">New Password</label>
-                    <input type="password" id="resetPasswordNew" required>
-                </div>
-                <div class="form-group full-width">
-                    <label for="resetPasswordConfirm">Confirm New Password</label>
-                    <input type="password" id="resetPasswordConfirm" required>
-                </div>
             </div>
             <div class="form-actions" style="padding:0 25px 25px;">
                 <button type="submit">Reset Password</button>
@@ -472,6 +511,7 @@
             </div>
         </form>
         <div id="resetPasswordError" style="padding:0 25px 15px;color:#c62828;font-size:13px;display:none;"></div>
+        <div id="resetPasswordSuccess" style="display:none;padding:0 25px 25px;"></div>
     </div>
 </div>
 

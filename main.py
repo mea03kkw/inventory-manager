@@ -135,11 +135,23 @@ class UserPasswordResetIn(BaseModel):
     new_password: str
 
 
+class AdminCreateUserIn(BaseModel):
+    email: str
+    role: str = "user"
+
+
+class ChangePasswordIn(BaseModel):
+    old_password: str
+    new_password: str
+    confirm_password: str
+
+
 class UserOut(BaseModel):
     id: int
     username: str
     display_name: str
     is_admin: bool
+    must_change_password: bool = False
 
 
 # ============================================================================
@@ -215,26 +227,49 @@ def _parse_unit_count(value) -> int:
 # Auth Helpers
 # ============================================================================
 
-import hashlib
+import bcrypt
 import secrets
 
 
 def hash_password(password: str) -> Tuple[str, str]:
-    """Hash a password with a random salt using SHA-256.
+    """Hash a password with bcrypt.
 
-    Returns a tuple of (password_hash_hex, salt_hex).
+    Returns (password_hash_str, salt_str).
+    bcrypt embeds the salt in the hash, so salt is returned as empty string.
     """
-    salt = secrets.token_hex(32)
-    salted = salt + password
-    password_hash = hashlib.sha256(salted.encode("utf-8")).hexdigest()
-    return password_hash, salt
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+    return hashed.decode("utf-8"), ""
+
+
+def is_bcrypt_hash(stored_hash: str) -> bool:
+    """Check if a stored hash is bcrypt format ($2b$ prefix)."""
+    return stored_hash.startswith("$2b$") or stored_hash.startswith("$2a$") or stored_hash.startswith("$2y$")
 
 
 def verify_password(password: str, password_hash: str, salt: str) -> bool:
-    """Verify a password against a stored hash and salt."""
+    """Verify a password against a stored hash.
+
+    Supports bcrypt hashes (current) and legacy SHA-256+salt hashes (migration).
+    """
+    if is_bcrypt_hash(password_hash):
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+
+    # Legacy SHA-256+salt fallback (for migration)
+    import hashlib
     salted = salt + password
     computed = hashlib.sha256(salted.encode("utf-8")).hexdigest()
     return computed == password_hash
+
+
+def generate_temp_password(length: int = 12) -> str:
+    """Generate a secure random temporary password.
+    
+    Includes uppercase, lowercase, and digits.
+    Length defaults to 12 characters.
+    """
+    import string as str_mod
+    alphabet = str_mod.ascii_letters + str_mod.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
 # ============================================================================
@@ -259,7 +294,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
         def _query():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute("SELECT id, username, display_name, is_admin, is_active FROM users WHERE id = %s", (user_id,))
+            cur.execute("SELECT id, username, display_name, is_admin, is_active, must_change_password FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
             conn.close()
             return row
@@ -268,7 +303,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
         # aiosqlite
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        await cur.execute("SELECT id, username, display_name, is_admin, is_active FROM users WHERE id = ?", (user_id,))
+        await cur.execute("SELECT id, username, display_name, is_admin, is_active, must_change_password FROM users WHERE id = ?", (user_id,))
         row = await cur.fetchone()
         await conn.close()
 
@@ -276,7 +311,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
         request.session.clear()
         return None
 
-    user_id_val, username, display_name, is_admin, is_active = row
+    user_id_val, username, display_name, is_admin, is_active, must_change_password = row
     if not is_active:
         request.session.clear()
         return None
@@ -286,6 +321,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
         username=username,
         display_name=display_name or "",
         is_admin=bool(is_admin),
+        must_change_password=bool(must_change_password),
     )
 
 
@@ -353,6 +389,8 @@ async def require_login(request: Request) -> UserOut:
     user = await get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    if user.must_change_password:
+        raise HTTPException(status_code=403, detail="You must change your password before continuing")
     return user
 
 
@@ -403,6 +441,7 @@ def init_db():
                 display_name TEXT DEFAULT '',
                 is_admin BOOLEAN DEFAULT FALSE,
                 is_active BOOLEAN DEFAULT TRUE,
+                must_change_password BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -410,6 +449,8 @@ def init_db():
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)")
         # Add unique index for non-null emails
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL")
+        # Add must_change_password column if not exists
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE")
     else:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -420,6 +461,7 @@ def init_db():
                 display_name TEXT DEFAULT '',
                 is_admin INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
+                must_change_password INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -428,6 +470,8 @@ def init_db():
         columns = [row[1] for row in cur.fetchall()]
         if 'email' not in columns:
             cur.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        if 'must_change_password' not in columns:
+            cur.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
         # Add unique index for non-null emails
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL")
 
@@ -660,14 +704,19 @@ def health_check():
 @app.post("/api/auth/login")
 async def login(request: Request, payload: LoginRequest):
     """Authenticate a user and create a session."""
+    username_input = payload.username.strip().lower()
+    # Normalize: if full email provided, extract username prefix
+    if '@' in username_input:
+        username_input = username_input.split('@')[0]
+
     database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             cur.execute(
-                "SELECT id, username, password_hash, salt, display_name, is_admin, is_active FROM users WHERE username = %s",
-                (payload.username,),
+                "SELECT id, username, password_hash, salt, display_name, is_admin, is_active, must_change_password FROM users WHERE username = %s",
+                (username_input,),
             )
             row = cur.fetchone()
             conn.close()
@@ -677,8 +726,8 @@ async def login(request: Request, payload: LoginRequest):
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
         await cur.execute(
-            "SELECT id, username, password_hash, salt, display_name, is_admin, is_active FROM users WHERE username = ?",
-            (payload.username,),
+            "SELECT id, username, password_hash, salt, display_name, is_admin, is_active, must_change_password FROM users WHERE username = ?",
+            (username_input,),
         )
         row = await cur.fetchone()
         await conn.close()
@@ -686,12 +735,32 @@ async def login(request: Request, payload: LoginRequest):
     if row is None:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    user_id, username, password_hash, salt, display_name, is_admin, is_active = row
+    user_id, username, password_hash, salt, display_name, is_admin, is_active, must_change_password = row
     if not is_active:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     if not verify_password(payload.password, password_hash, salt):
         raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    # Migrate legacy SHA-256 hashes to bcrypt on successful login
+    if not is_bcrypt_hash(password_hash):
+        new_hash, _ = hash_password(payload.password)
+        if is_postgres():
+            def _migrate():
+                conn = psycopg2.connect(database_url)
+                cur = conn.cursor()
+                cur.execute("UPDATE users SET password_hash = %s, salt = '' WHERE id = %s",
+                            (new_hash, user_id))
+                conn.commit()
+                conn.close()
+            await run_in_threadpool(_migrate)
+        else:
+            conn = await aiosqlite.connect("sample_management.db")
+            cur = await conn.cursor()
+            await cur.execute("UPDATE users SET password_hash = ?, salt = '' WHERE id = ?",
+                              (new_hash, user_id))
+            await conn.commit()
+            await conn.close()
 
     request.session["user_id"] = user_id
 
@@ -700,6 +769,7 @@ async def login(request: Request, payload: LoginRequest):
         "username": username,
         "display_name": display_name or "",
         "is_admin": bool(is_admin),
+        "must_change_password": bool(must_change_password),
     })
 
 
@@ -713,23 +783,42 @@ async def logout(request: Request):
 @app.get("/api/auth/me")
 async def get_me(request: Request):
     """Return the currently authenticated user."""
-    user = await require_login(request)
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
 
 @app.post("/api/auth/register")
-async def register(payload: RegisterRequest):
-    """Register a new normal user via Philips email."""
+async def register():
+    """Public registration is disabled."""
+    raise HTTPException(
+        status_code=403,
+        detail="Registration is disabled. Please contact Jenny Cheung at jenny.yc.cheung@philips.com."
+    )
+
+
+@app.post("/api/auth/admin/create-user")
+async def admin_create_user(request: Request, payload: AdminCreateUserIn):
+    """Admin-only: create a new user account with temporary password."""
+    admin = await require_admin(request)
+
     email = payload.email.strip().lower()
     if not email.endswith("@philips.com"):
         raise HTTPException(status_code=400, detail="Email must end with @philips.com")
+
     username = email.split("@")[0]
     if not username:
         raise HTTPException(status_code=400, detail="Invalid email address")
-    password_hash, salt = hash_password(payload.password)
+
+    temp_password = generate_temp_password()
+    password_hash, salt = hash_password(temp_password)
+
+    is_admin_role = payload.role == "admin"
+
     database_url = _get_db_url()
     if is_postgres():
-        def _register():
+        def _create():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             cur.execute("SELECT id FROM users WHERE username = %s", (username,))
@@ -741,14 +830,14 @@ async def register(payload: RegisterRequest):
                 conn.close()
                 raise HTTPException(status_code=400, detail="Email already registered")
             cur.execute(
-                """INSERT INTO users (username, password_hash, salt, display_name, is_admin, is_active, email)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                (username, password_hash, salt, username, False, True, email),
+                """INSERT INTO users (username, password_hash, salt, display_name, is_admin, is_active, email, must_change_password)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                (username, password_hash, salt, username, is_admin_role, True, email, True),
             )
             conn.commit()
             conn.close()
             return True
-        await run_in_threadpool(_register)
+        await run_in_threadpool(_create)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
@@ -761,13 +850,89 @@ async def register(payload: RegisterRequest):
             await conn.close()
             raise HTTPException(status_code=400, detail="Email already registered")
         await cur.execute(
-            """INSERT INTO users (username, password_hash, salt, display_name, is_admin, is_active, email)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (username, password_hash, salt, username, False, True, email),
+            """INSERT INTO users (username, password_hash, salt, display_name, is_admin, is_active, email, must_change_password)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (username, password_hash, salt, username, is_admin_role, True, email, True),
         )
         await conn.commit()
         await conn.close()
-    return {"status": "ok", "username": username, "email": email}
+
+    return {
+        "status": "ok",
+        "username": username,
+        "email": email,
+        "temporary_password": temp_password,
+        "must_change_password": True,
+    }
+
+
+@app.post("/api/auth/change-password")
+async def change_password(request: Request, payload: ChangePasswordIn):
+    """Allow a logged-in user to change their own password."""
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    database_url = _get_db_url()
+
+    # Fetch current user's password hash and salt
+    if is_postgres():
+        def _fetch():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT password_hash, salt FROM users WHERE id = %s", (user.id,))
+            row = cur.fetchone()
+            conn.close()
+            return row
+        row = await run_in_threadpool(_fetch)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT password_hash, salt FROM users WHERE id = ?", (user.id,))
+        row = await cur.fetchone()
+        await conn.close()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    current_hash, current_salt = row
+
+    if not verify_password(payload.old_password, current_hash, current_salt):
+        raise HTTPException(status_code=400, detail="Old password is incorrect")
+
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+
+    if not payload.new_password or len(payload.new_password.strip()) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+
+    if payload.new_password == payload.old_password:
+        raise HTTPException(status_code=400, detail="New password must be different from old password")
+
+    new_hash, new_salt = hash_password(payload.new_password)
+
+    if is_postgres():
+        def _update():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE users SET password_hash = %s, salt = %s, must_change_password = FALSE WHERE id = %s",
+                (new_hash, new_salt, user.id),
+            )
+            conn.commit()
+            conn.close()
+        await run_in_threadpool(_update)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute(
+            "UPDATE users SET password_hash = ?, salt = ?, must_change_password = 0 WHERE id = ?",
+            (new_hash, new_salt, user.id),
+        )
+        await conn.commit()
+        await conn.close()
+
+    return {"status": "ok", "message": "Password changed successfully"}
 
 
 @app.get("/api/users")
@@ -780,12 +945,12 @@ async def list_users(request: Request):
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             cur.execute(
-                "SELECT id, username, email, is_admin, is_active FROM users ORDER BY username ASC"
+                "SELECT id, username, email, is_admin, is_active, must_change_password FROM users ORDER BY username ASC"
             )
             rows = cur.fetchall()
             conn.close()
             return [
-                {"id": r[0], "username": r[1], "email": r[2] or "", "is_admin": bool(r[3]), "is_active": bool(r[4])}
+                {"id": r[0], "username": r[1], "email": r[2] or "", "is_admin": bool(r[3]), "is_active": bool(r[4]), "must_change_password": bool(r[5])}
                 for r in rows
             ]
         return await run_in_threadpool(_query)
@@ -794,12 +959,12 @@ async def list_users(request: Request):
         conn.row_factory = aiosqlite.Row
         cur = await conn.cursor()
         await cur.execute(
-            "SELECT id, username, email, is_admin, is_active FROM users ORDER BY username ASC"
+            "SELECT id, username, email, is_admin, is_active, must_change_password FROM users ORDER BY username ASC"
         )
         rows = await cur.fetchall()
         await conn.close()
         return [
-            {"id": r["id"], "username": r["username"], "email": r["email"] or "", "is_admin": bool(r["is_admin"]), "is_active": bool(r["is_active"])}
+            {"id": r["id"], "username": r["username"], "email": r["email"] or "", "is_admin": bool(r["is_admin"]), "is_active": bool(r["is_active"]), "must_change_password": bool(r["must_change_password"])}
             for r in rows
         ]
 
@@ -959,12 +1124,9 @@ async def update_user(user_id: int, request: Request, payload: UserUpdateIn):
 
 
 @app.put("/api/users/{user_id}/reset-password")
-async def reset_user_password(user_id: int, request: Request, payload: UserPasswordResetIn):
-    """Reset a user's password (admin-only)."""
+async def reset_user_password(user_id: int, request: Request):
+    """Reset a user's password with a system-generated temporary password (admin-only)."""
     await require_admin(request)
-
-    if not payload.new_password or not payload.new_password.strip():
-        raise HTTPException(status_code=400, detail="New password must not be empty")
 
     database_url = _get_db_url()
     if is_postgres():
@@ -987,13 +1149,14 @@ async def reset_user_password(user_id: int, request: Request, payload: UserPassw
     if not exists:
         raise HTTPException(status_code=404, detail="User not found")
 
-    password_hash, salt = hash_password(payload.new_password)
+    temp_password = generate_temp_password()
+    password_hash, salt = hash_password(temp_password)
 
     if is_postgres():
         def _update():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute("UPDATE users SET password_hash = %s, salt = %s WHERE id = %s",
+            cur.execute("UPDATE users SET password_hash = %s, salt = %s, must_change_password = TRUE WHERE id = %s",
                         (password_hash, salt, user_id))
             conn.commit()
             conn.close()
@@ -1001,12 +1164,12 @@ async def reset_user_password(user_id: int, request: Request, payload: UserPassw
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        await cur.execute("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?",
+        await cur.execute("UPDATE users SET password_hash = ?, salt = ?, must_change_password = 1 WHERE id = ?",
                           (password_hash, salt, user_id))
         await conn.commit()
         await conn.close()
 
-    return {"status": "ok"}
+    return {"status": "ok", "temporary_password": temp_password, "must_change_password": True}
 
 
 @app.delete("/api/users/{user_id}")

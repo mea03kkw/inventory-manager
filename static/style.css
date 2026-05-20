@@ -1617,3 +1617,127 @@ button.btn-pending {
     padding-right: 14px !important;
   }
 }
+
+/* ============================================================
+   Change Password Modal Width
+   ============================================================ */
+
+#changePasswordModal .modal-content {
+    max-width: 400px;
+}
+
+/* ============================================================
+   Users Cards (Mobile)
+   ============================================================ */
+
+.users-cards {
+    display: none;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.users-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.users-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.users-card__username {
+    font-size: 16px;
+    font-weight: 700;
+    color: #222;
+}
+
+.users-card__role {
+    font-size: 11px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.users-card__body {
+    margin-bottom: 6px;
+}
+
+.users-card__row {
+    display: flex;
+    gap: 6px;
+    margin: 3px 0;
+    font-size: 13px;
+}
+
+.users-card__label {
+    color: #888;
+    font-weight: 500;
+    min-width: 40px;
+}
+
+.users-card__value {
+    color: #333;
+}
+
+.users-card__status-row {
+    margin-bottom: 10px;
+}
+
+.users-status-chip {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.users-status-active {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.users-status-inactive {
+    background: #f5f5f5;
+    color: #888;
+}
+
+.users-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.users-card__actions button {
+    flex: 1 1 auto;
+    min-width: 70px;
+    font-size: 12px;
+    padding: 6px 12px;
+    text-align: center;
+}
+
+.users-empty {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+    font-size: 14px;
+}
+
+@media screen and (max-width: 768px) {
+    .users-cards {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #users-section .table-container {
+        display: none;
+    }
+}

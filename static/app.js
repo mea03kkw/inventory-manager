@@ -10,6 +10,8 @@ const API = {
     logout: () => `${API_BASE}/auth/logout`,
     me: () => `${API_BASE}/auth/me`,
     register: () => `${API_BASE}/auth/register`,
+    changePassword: () => `${API_BASE}/auth/change-password`,
+    adminCreateUser: () => `${API_BASE}/auth/admin/create-user`,
     // Samples
     list: () => `${API_BASE}/items`,
     create: () => `${API_BASE}/items`,
@@ -64,12 +66,13 @@ function updateAuthUI() {
                 <strong>${escapeHtml(currentUser.display_name || currentUser.username)}</strong>
                 ${currentUser.is_admin ? '<span class="admin-badge">Admin</span>' : ''}
             </span>
+            <button class="edit" onclick="openChangePasswordModal()">Change Password</button>
             <button class="edit" onclick="logout()">Logout</button>
         `;
     } else {
         bar.innerHTML = `
             <button class="edit" onclick="openLoginModal()">Login</button>
-            <button class="edit" onclick="openRegisterModal()">Register</button>
+            <button class="edit" onclick="showRegisterInfo()">Register</button>
         `;
     }
     updateUIBasedOnRole();
@@ -117,13 +120,6 @@ function openLoginModal() {
     openModal('loginModal');
 }
 
-function openRegisterModal() {
-    document.getElementById('registerEmail').value = '';
-    document.getElementById('registerPassword').value = '';
-    document.getElementById('registerConfirmPassword').value = '';
-    openModal('registerModal');
-}
-
 async function submitLogin(e) {
     e.preventDefault();
     const username = document.getElementById('loginUsername').value.trim();
@@ -143,13 +139,17 @@ async function submitLogin(e) {
         const data = await response.json();
         currentUser = data.user || data;
         updateAuthUI();
-        // Navigate to correct section after login
+        closeModal();
+        if (currentUser.must_change_password) {
+            showToast('You must change your password before continuing.', 'error');
+            openChangePasswordModal();
+            return;
+        }
         if (currentUser && currentUser.is_admin) {
             showSection('dashboard');
         } else {
             showSection('samples');
         }
-        closeModal();
         showToast('Logged in successfully', 'success');
     } catch (err) {
         setButtonPending(submitBtn, false);
@@ -157,53 +157,32 @@ async function submitLogin(e) {
     }
 }
 
+function showInfoModal(title, message) {
+    document.getElementById('infoModalTitle').textContent = title;
+    document.getElementById('infoModalMessage').innerHTML = message;
+    openModal('infoModal');
+}
+
+function showRegisterInfo() {
+    showInfoModal('Registration',
+        'Account registration is restricted.<br><br>' +
+        'Please contact <strong>Jenny Cheung</strong> at ' +
+        '<a href="mailto:jenny.yc.cheung@philips.com" style="color:#3f51b5;text-decoration:underline;">jenny.yc.cheung@philips.com</a> ' +
+        'for account setup.'
+    );
+}
+
+function showForgotPasswordInfo() {
+    showInfoModal('Forgot Password',
+        'Password reset is handled by the administrator.<br><br>' +
+        'Please contact <strong>Jenny Cheung</strong> at ' +
+        '<a href="mailto:jenny.yc.cheung@philips.com" style="color:#3f51b5;text-decoration:underline;">jenny.yc.cheung@philips.com</a>.'
+    );
+}
+
 async function submitRegister(e) {
     e.preventDefault();
-    const email = document.getElementById('registerEmail').value.trim();
-    const password = document.getElementById('registerPassword').value;
-    const confirmPassword = document.getElementById('registerConfirmPassword').value;
-
-    if (!email) {
-        alert('Email is required');
-        return;
-    }
-    if (!email.endsWith('@philips.com')) {
-        alert('Email must end with @philips.com');
-        return;
-    }
-    if (!password) {
-        alert('Password is required');
-        return;
-    }
-    if (!confirmPassword) {
-        alert('Confirm password is required');
-        return;
-    }
-    if (password !== confirmPassword) {
-        alert('Passwords do not match');
-        return;
-    }
-
-    try {
-        const response = await fetch(API.register(), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-        });
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.detail || 'Registration failed');
-        }
-        const data = await response.json();
-        closeModal();
-        const username = email.split('@')[0];
-        document.getElementById('loginUsername').value = username;
-        document.getElementById('loginPassword').value = '';
-        openModal('loginModal');
-        showToast('Account created successfully. Please log in.', 'success');
-    } catch (err) {
-        showToast('Error: ' + err.message, 'error');
-    }
+    showRegisterInfo();
 }
 
 async function logout() {
@@ -216,6 +195,129 @@ async function logout() {
         showToast('Logged out', 'success');
     } catch (err) {
         showToast('Error: ' + err.message, 'error');
+    }
+}
+
+function openChangePasswordModal() {
+    document.getElementById('changePasswordOld').value = '';
+    document.getElementById('changePasswordNew').value = '';
+    document.getElementById('changePasswordConfirm').value = '';
+    document.getElementById('changePasswordError').style.display = 'none';
+    document.getElementById('changePasswordSuccess').style.display = 'none';
+    const oldGroup = document.getElementById('changePasswordOldGroup');
+    if (oldGroup) oldGroup.style.display = '';
+    document.getElementById('changePasswordOld').required = true;
+    openModal('changePasswordModal');
+}
+
+async function submitChangePassword(e) {
+    e.preventDefault();
+    const errorDiv = document.getElementById('changePasswordError');
+    const successDiv = document.getElementById('changePasswordSuccess');
+    errorDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+
+    const oldPassword = document.getElementById('changePasswordOld').value;
+    const newPassword = document.getElementById('changePasswordNew').value;
+    const confirmPassword = document.getElementById('changePasswordConfirm').value;
+
+    if (!oldPassword) {
+        errorDiv.textContent = 'Old password is required';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    if (!newPassword) {
+        errorDiv.textContent = 'New password is required';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    if (!confirmPassword) {
+        errorDiv.textContent = 'Confirm password is required';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        errorDiv.textContent = 'Passwords do not match';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    if (newPassword.length < 8) {
+        errorDiv.textContent = 'New password must be at least 8 characters';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    const submitBtn = document.querySelector('#changePasswordModal .form-actions button[type="submit"]');
+    setButtonPending(submitBtn, true, 'Changing...');
+    try {
+        const response = await fetch(API.changePassword(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ old_password: oldPassword, new_password: newPassword, confirm_password: confirmPassword })
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Failed to change password');
+        }
+        successDiv.textContent = 'Password changed successfully';
+        successDiv.style.display = 'block';
+        errorDiv.style.display = 'none';
+        setButtonPending(submitBtn, false);
+        await loadCurrentUser();
+        if (currentUser && currentUser.must_change_password === false) {
+            if (currentUser.is_admin) showSection('dashboard');
+            else showSection('samples');
+        }
+        document.getElementById('changePasswordOld').value = '';
+        document.getElementById('changePasswordNew').value = '';
+        document.getElementById('changePasswordConfirm').value = '';
+        setTimeout(() => closeModal(), 1500);
+    } catch (err) {
+        setButtonPending(submitBtn, false);
+        errorDiv.textContent = err.message;
+        errorDiv.style.display = 'block';
+    }
+}
+
+async function adminCreateUser() {
+    const email = document.getElementById('createUserEmail').value.trim();
+    const role = document.getElementById('createUserRole').value;
+    const resultDiv = document.getElementById('createUserResult');
+
+    if (!email) { showToast('Email is required', 'error'); return; }
+    if (!email.endsWith('@philips.com')) { showToast('Email must end with @philips.com', 'error'); return; }
+
+    const submitBtn = document.querySelector('#createUserForm .form-actions button');
+    setButtonPending(submitBtn, true, 'Creating...');
+
+    try {
+        const response = await fetch(API.adminCreateUser(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, role })
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Failed to create user');
+        }
+        const data = await response.json();
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `
+            <p style="margin:0 0 8px;font-weight:600;color:#2e7d32;">Account created successfully</p>
+            <p style="margin:4px 0;"><strong>Username:</strong> ${escapeHtml(data.username)}</p>
+            <p style="margin:4px 0;"><strong>Email:</strong> ${escapeHtml(data.email)}</p>
+            <p style="margin:4px 0;"><strong>Temporary Password:</strong></p>
+            <div style="background:#fff;border:1px solid #c8e6c9;border-radius:6px;padding:10px 14px;font-family:monospace;font-size:16px;user-select:all;margin:4px 0 8px;">${escapeHtml(data.temporary_password)}</div>
+            <p style="margin:8px 0 0;color:#e65100;font-size:13px;">User must change password on first login.</p>
+        `;
+        document.getElementById('createUserEmail').value = '';
+        document.getElementById('createUserDerivedUsername').textContent = '(auto-derived from email)';
+        loadUsers();
+        showToast('User created successfully', 'success');
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    } finally {
+        setButtonPending(submitBtn, false);
     }
 }
 
@@ -1587,8 +1689,11 @@ async function loadUsers() {
 
 function renderUsers(users) {
     const tbody = document.getElementById('usersTableBody');
+    const cardsContainer = document.getElementById('usersCards');
     if (!users || users.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:#999;">No users found</td></tr>';
+        const emptyRow = '<tr><td colspan="5" style="text-align:center;padding:40px;color:#999;">No users found</td></tr>';
+        tbody.innerHTML = emptyRow;
+        if (cardsContainer) cardsContainer.innerHTML = '<div class="users-empty">No users found</div>';
         return;
     }
     tbody.innerHTML = users.map(u => {
@@ -1609,6 +1714,34 @@ function renderUsers(users) {
             </tr>
         `;
     }).join('');
+
+    if (cardsContainer) {
+        cardsContainer.innerHTML = users.map(u => {
+            const role = u.is_admin ? 'System Administrator' : 'Regular User';
+            const status = u.is_active ? 'Active' : 'Inactive';
+            const email = u.email || '-';
+            const statusClass = u.is_active ? 'users-status-active' : 'users-status-inactive';
+            return `
+                <div class="users-card">
+                    <div class="users-card__header">
+                        <span class="users-card__username">${escapeHtml(u.username)}</span>
+                        <span class="users-card__role">${escapeHtml(role)}</span>
+                    </div>
+                    <div class="users-card__body">
+                        <div class="users-card__row"><span class="users-card__label">Email</span><span class="users-card__value">${escapeHtml(email)}</span></div>
+                    </div>
+                    <div class="users-card__status-row">
+                        <span class="users-status-chip ${statusClass}">${escapeHtml(status)}</span>
+                    </div>
+                    <div class="users-card__actions">
+                        <button class="edit" onclick="openUserEditModal(${u.id})">Edit</button>
+                        <button class="edit" onclick="openUserResetPasswordModal(${u.id}, '${escapeHtml(u.username)}')">Reset</button>
+                        ${!u.is_admin ? `<button class="delete" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">Delete</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
 }
 
 async function openUserEditModal(userId) {
@@ -1662,7 +1795,7 @@ async function submitUserEdit(e) {
         }
         closeUserEditModal();
         loadUsers();
-        alert('User updated successfully');
+        showToast('User updated successfully', 'success');
     } catch (err) {
         errorDiv.textContent = err.message;
         errorDiv.style.display = 'block';
@@ -1672,77 +1805,72 @@ async function submitUserEdit(e) {
 function openUserResetPasswordModal(userId, username) {
     document.getElementById('resetPasswordUserId').value = userId;
     document.getElementById('resetPasswordUsername').textContent = username;
-    document.getElementById('resetPasswordNew').value = '';
-    document.getElementById('resetPasswordConfirm').value = '';
     document.getElementById('resetPasswordError').style.display = 'none';
     openModal('userResetPasswordModal');
 }
 
 function closeUserResetPasswordModal() {
     document.getElementById('resetPasswordError').style.display = 'none';
+    document.getElementById('resetPasswordSuccess').style.display = 'none';
+    document.getElementById('resetPasswordSuccess').innerHTML = '';
+    const form = document.querySelector('#userResetPasswordModal form');
+    if (form) form.style.display = '';
     closeModal();
+}
+
+async function deleteUser(userId, username) {
+    if (!confirm(`Are you sure you want to delete user "${username}"? This action cannot be undone.`)) return;
+    try {
+        const response = await fetch(API.userDelete(userId), { method: 'DELETE' });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Failed to delete user');
+        }
+        showToast(`User "${username}" deleted successfully`, 'success');
+        loadUsers();
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
 }
 
 async function submitUserResetPassword(e) {
     e.preventDefault();
     const errorDiv = document.getElementById('resetPasswordError');
+    const successDiv = document.getElementById('resetPasswordSuccess');
     errorDiv.style.display = 'none';
-    errorDiv.textContent = '';
+    successDiv.style.display = 'none';
 
     const userId = parseInt(document.getElementById('resetPasswordUserId').value);
-    const newPassword = document.getElementById('resetPasswordNew').value;
-    const confirmPassword = document.getElementById('resetPasswordConfirm').value;
 
-    if (!newPassword) {
-        errorDiv.textContent = 'New password is required';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    if (!confirmPassword) {
-        errorDiv.textContent = 'Confirm password is required';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    if (newPassword !== confirmPassword) {
-        errorDiv.textContent = 'Passwords do not match';
-        errorDiv.style.display = 'block';
-        return;
-    }
+    const submitBtn = document.querySelector('#userResetPasswordModal .form-actions button[type="submit"]');
+    setButtonPending(submitBtn, true, 'Resetting...');
 
     try {
         const response = await fetch(API.userResetPassword(userId), {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ new_password: newPassword })
+            headers: { 'Content-Type': 'application/json' }
         });
         if (!response.ok) {
             const err = await response.json();
             throw new Error(err.detail || 'Failed to reset password');
         }
-        closeUserResetPasswordModal();
-        alert('Password reset successfully');
+        const data = await response.json();
+        setButtonPending(submitBtn, false);
+        successDiv.innerHTML = `
+            <div style="background:#e8f5e9;border-radius:8px;padding:16px;border-left:4px solid #2e7d32;">
+                <p style="margin:0 0 8px;font-weight:600;color:#2e7d32;">Password reset successfully</p>
+                <p style="margin:4px 0;"><strong>Temporary Password:</strong></p>
+                <div style="background:#fff;border:1px solid #c8e6c9;border-radius:6px;padding:10px 14px;font-family:monospace;font-size:16px;user-select:all;margin:4px 0 8px;">${escapeHtml(data.temporary_password)}</div>
+                <p style="margin:0;color:#e65100;font-size:13px;">User must change password on next login.</p>
+                <button type="button" style="margin-top:10px;" onclick="closeUserResetPasswordModal();loadUsers();">Done</button>
+            </div>
+        `;
+        successDiv.style.display = 'block';
+        document.querySelector('#userResetPasswordModal form').style.display = 'none';
     } catch (err) {
+        setButtonPending(submitBtn, false);
         errorDiv.textContent = err.message;
         errorDiv.style.display = 'block';
-    }
-}
-
-async function deleteUser(userId, username) {
-    if (!confirm('Are you sure you want to delete user "' + username + '"? This action cannot be undone.')) {
-        return;
-    }
-    try {
-        const response = await fetch(API.userDelete(userId), {
-            method: 'DELETE'
-        });
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.detail || 'Failed to delete user');
-        }
-        loadUsers();
-        alert('User deleted successfully');
-    } catch (err) {
-        alert('Error: ' + err.message);
     }
 }
 
@@ -1771,4 +1899,20 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCurrentUser();
 
     loadItems();
+
+    // Email preview for Create User form
+    const emailInput = document.getElementById('createUserEmail');
+    if (emailInput) {
+        emailInput.addEventListener('input', function() {
+            const val = this.value.trim();
+            const preview = document.getElementById('createUserDerivedUsername');
+            if (preview) {
+                if (val && val.includes('@')) {
+                    preview.textContent = val.split('@')[0];
+                } else {
+                    preview.textContent = '(auto-derived from email)';
+                }
+            }
+        });
+    }
 });
