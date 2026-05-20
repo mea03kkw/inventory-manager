@@ -168,14 +168,14 @@ function showRegisterInfo() {
         const name = contact.name || 'System Administrator';
         const email = contact.email || 'jenny.yc.cheung@philips.com';
         const link = email ? `<a href="mailto:${escapeHtml(email)}" style="color:#3f51b5;text-decoration:underline;">${escapeHtml(email)}</a>` : 'your system administrator';
-        showInfoModal('Registration',
+        showInfoModal('Contact Administrator',
             'Account registration is restricted.<br><br>' +
-            `Please contact <strong>${escapeHtml(name)}</strong> at ${link} for account setup.`
+            `Please contact <strong>${escapeHtml(name)}</strong> at ${link} for account setup or password reset.`
         );
     }).catch(() => {
-        showInfoModal('Registration',
+        showInfoModal('Contact Administrator',
             'Account registration is restricted.<br><br>' +
-            'Please contact your system administrator for account setup.'
+            'Please contact your system administrator for account setup or password reset.'
         );
     });
 }
