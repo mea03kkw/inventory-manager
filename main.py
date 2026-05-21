@@ -995,13 +995,13 @@ async def list_users(request: Request):
 
 @app.get("/api/settings/admin-contact")
 async def get_admin_contact():
-    """Get the configured admin contact email from app settings."""
+    """Get admin contact email from user record ID=1 for guest mailto flows."""
     database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute("SELECT value FROM settings WHERE key = 'admin_contact_email'")
+            cur.execute("SELECT email FROM users WHERE id = 1")
             row = cur.fetchone()
             conn.close()
             return row
@@ -1009,7 +1009,7 @@ async def get_admin_contact():
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        await cur.execute("SELECT value FROM settings WHERE key = 'admin_contact_email'")
+        await cur.execute("SELECT email FROM users WHERE id = 1")
         row = await cur.fetchone()
         await conn.close()
     if row and row[0]:
@@ -1019,7 +1019,7 @@ async def get_admin_contact():
 
 @app.put("/api/settings/admin-contact")
 async def update_admin_contact(request: Request, payload: AdminContactIn):
-    """Update the admin contact email in app settings (admin-only)."""
+    """Update email on user ID=1 (admin-only). This is the source of truth for guest mailto."""
     await require_admin(request)
 
     email = payload.email.strip().lower()
@@ -1030,23 +1030,17 @@ async def update_admin_contact(request: Request, payload: AdminContactIn):
 
     database_url = _get_db_url()
     if is_postgres():
-        def _upsert():
+        def _update():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute(
-                f"INSERT INTO settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = %s",
-                ("admin_contact_email", email, email),
-            )
+            cur.execute("UPDATE users SET email = %s WHERE id = 1", (email,))
             conn.commit()
             conn.close()
-        await run_in_threadpool(_upsert)
+        await run_in_threadpool(_update)
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        await cur.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-            ("admin_contact_email", email),
-        )
+        await cur.execute("UPDATE users SET email = ? WHERE id = 1", (email,))
         await conn.commit()
         await conn.close()
 
