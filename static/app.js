@@ -1705,7 +1705,7 @@ async function loadMyActiveCheckouts() {
             var statusLabel = item.status.charAt(0).toUpperCase() + item.status.slice(1).replace('_', ' ');
             var statusClass = 'status-' + item.status;
             var dueDisplay = item.due_date || '\u2014';
-            return '\n<div class="sample-mobile-card">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n    <span class="my-samples-status-badge ' + statusClass + '">' + statusLabel + '</span>\n  </div>\n  <div class="sample-mobile-card__meta">' +
+            return '\n<div class="sample-mobile-card" onclick="viewMySample(' + item.sample_id + ')">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n    <span class="my-samples-status-badge ' + statusClass + '">' + statusLabel + '</span>\n  </div>\n  <div class="sample-mobile-card__meta">' +
                 (item.sample_code ? escapeHtml(item.sample_code) : '') +
                 (item.sample_code && item.sample_type ? '<span class="sample-mobile-card__meta-sep">\u00B7</span>' : '') +
                 (item.sample_type ? escapeHtml(item.sample_type) : '') +
@@ -1714,7 +1714,7 @@ async function loadMyActiveCheckouts() {
                 '<strong>Qty:</strong> ' + item.quantity +
                 ' | <strong>Checkout:</strong> ' + escapeHtml(item.checkout_date || '') +
                 ' | <strong>Due:</strong> ' + dueDisplay +
-            '</div>\n  <div class="sample-mobile-card__actions">\n    <button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button>\n    <button class="btn-primary" onclick="openMyReturn(' + item.checkout_id + ',' + item.quantity + ')">Return</button>\n  </div>\n</div>';
+            '</div>\n  <div class="sample-mobile-card__actions">\n    <button class="btn-primary" onclick="event.stopPropagation();openMyReturn(' + item.checkout_id + ',' + item.quantity + ')">Return</button>\n  </div>\n</div>';
         }).join('');
 
         // Desktop table
@@ -1722,9 +1722,9 @@ async function loadMyActiveCheckouts() {
             var statusLabel = item.status.charAt(0).toUpperCase() + item.status.slice(1).replace('_', ' ');
             var statusClass = 'status-' + item.status;
             var dueDisplay = item.due_date || '\u2014';
-            return '\n<tr>\n  <td><div class="sample-name-cell">' + escapeHtml(item.sample_name || '') + '</div>' +
+            return '\n<tr onclick="viewMySample(' + item.sample_id + ')">\n  <td><div class="sample-name-cell">' + escapeHtml(item.sample_name || '') + '</div>' +
                 (item.sample_code ? '<div class="sample-code-cell">' + escapeHtml(item.sample_code) + '</div>' : '') +
-            '</td>\n  <td>' + escapeHtml(item.category || item.sample_type || '') + '</td>\n  <td>' + item.quantity + '</td>\n  <td>' + escapeHtml(item.checkout_date || '') + '</td>\n  <td>' + dueDisplay + '</td>\n  <td><span class="my-samples-status-badge ' + statusClass + '">' + statusLabel + '</span></td>\n  <td class="actions-cell">\n    <button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button>\n    <button class="btn-primary" onclick="openMyReturn(' + item.checkout_id + ',' + item.quantity + ')">Return</button>\n  </td>\n</tr>';
+            '</td>\n  <td>' + escapeHtml(item.category || item.sample_type || '') + '</td>\n  <td>' + item.quantity + '</td>\n  <td>' + escapeHtml(item.checkout_date || '') + '</td>\n  <td>' + dueDisplay + '</td>\n  <td><span class="my-samples-status-badge ' + statusClass + '">' + statusLabel + '</span></td>\n  <td class="actions-cell">\n    <button class="btn-primary" onclick="event.stopPropagation();openMyReturn(' + item.checkout_id + ',' + item.quantity + ')">Return</button>\n  </td>\n</tr>';
         }).join('');
     } catch (err) {
         console.error('Active checkouts load error:', err);
@@ -1766,20 +1766,20 @@ async function loadMyHistory() {
 
         // Mobile cards
         cardsContainer.innerHTML = data.items.map(function(item) {
-            return '\n<div class="sample-mobile-card">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n  </div>\n  <div class="sample-mobile-card__meta">' +
+            return '\n<div class="sample-mobile-card" onclick="viewMySample(' + item.sample_id + ')">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n  </div>\n  <div class="sample-mobile-card__meta">' +
                 (item.sample_code ? escapeHtml(item.sample_code) : '') +
             '</div>\n  <div class="sample-mobile-card__dates">' +
                 '<strong>Qty:</strong> ' + (item.quantity || 1) +
                 ' | <strong>Checkout:</strong> ' + escapeHtml(item.checkout_date || '') +
                 ' | <strong>Returned:</strong> ' + escapeHtml(item.actual_return_date || '') +
-            '</div>\n  <div class="sample-mobile-card__actions">\n    <button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button>\n  </div>\n</div>';
+            '</div>\n</div>';
         }).join('');
 
         // Desktop table
         tableBody.innerHTML = data.items.map(function(item) {
-            return '\n<tr>\n  <td><div class="sample-name-cell">' + escapeHtml(item.sample_name || '') + '</div>' +
+            return '\n<tr onclick="viewMySample(' + item.sample_id + ')">\n  <td><div class="sample-name-cell">' + escapeHtml(item.sample_name || '') + '</div>' +
                 (item.sample_code ? '<div class="sample-code-cell">' + escapeHtml(item.sample_code) + '</div>' : '') +
-            '</td>\n  <td>' + (item.quantity || 1) + '</td>\n  <td>' + escapeHtml(item.checkout_date || '') + '</td>\n  <td>' + escapeHtml(item.actual_return_date || '') + '</td>\n  <td class="actions-cell"><button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button></td>\n</tr>';
+            '</td>\n  <td>' + (item.quantity || 1) + '</td>\n  <td>' + escapeHtml(item.checkout_date || '') + '</td>\n  <td>' + escapeHtml(item.actual_return_date || '') + '</td>\n</tr>';
         }).join('');
 
         // Pagination
@@ -1812,19 +1812,19 @@ function loadMoreHistory() {
 
             data.items.forEach(function(item) {
                 // Desktop row
-                var row = '\n<tr>\n  <td><div class="sample-name-cell">' + escapeHtml(item.sample_name || '') + '</div>' +
+                var row = '\n<tr onclick="viewMySample(' + item.sample_id + ')">\n  <td><div class="sample-name-cell">' + escapeHtml(item.sample_name || '') + '</div>' +
                     (item.sample_code ? '<div class="sample-code-cell">' + escapeHtml(item.sample_code) + '</div>' : '') +
-                '</td>\n  <td>' + (item.quantity || 1) + '</td>\n  <td>' + escapeHtml(item.checkout_date || '') + '</td>\n  <td>' + escapeHtml(item.actual_return_date || '') + '</td>\n  <td class="actions-cell"><button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button></td>\n</tr>';
+                '</td>\n  <td>' + (item.quantity || 1) + '</td>\n  <td>' + escapeHtml(item.checkout_date || '') + '</td>\n  <td>' + escapeHtml(item.actual_return_date || '') + '</td>\n</tr>';
                 tableBody.insertAdjacentHTML('beforeend', row);
 
                 // Mobile card
-                var card = '\n<div class="sample-mobile-card">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n  </div>\n  <div class="sample-mobile-card__meta">' +
+                var card = '\n<div class="sample-mobile-card" onclick="viewMySample(' + item.sample_id + ')">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n  </div>\n  <div class="sample-mobile-card__meta">' +
                     (item.sample_code ? escapeHtml(item.sample_code) : '') +
                 '</div>\n  <div class="sample-mobile-card__dates">' +
                     '<strong>Qty:</strong> ' + (item.quantity || 1) +
                     ' | <strong>Checkout:</strong> ' + escapeHtml(item.checkout_date || '') +
                     ' | <strong>Returned:</strong> ' + escapeHtml(item.actual_return_date || '') +
-                '</div>\n  <div class="sample-mobile-card__actions">\n    <button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button>\n  </div>\n</div>';
+                '</div>\n</div>';
                 cardsContainer.insertAdjacentHTML('beforeend', card);
             });
 
@@ -1864,13 +1864,8 @@ function setMySamplesFilter(filter) {
 }
 
 function viewMySample(sampleId) {
-    // Reuse existing detail view in a simpler way - navigate to samples detail
     closeModal();
-    showSection('samples');
-    // Open detail modal after a short delay
-    setTimeout(function() {
-        viewItem(sampleId);
-    }, 200);
+    viewItem(sampleId);
 }
 
 function openMyReturn(checkoutId, maxQty) {
