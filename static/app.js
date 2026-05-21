@@ -697,6 +697,28 @@ function _copyCreateUserPassword() {
     if (pw) copyToClipboard(pw, 'Password copied');
 }
 
+function _resetPwGetDiv(id) {
+    return document.getElementById(id);
+}
+
+function _resetPwEmailUser(id) {
+    var div = _resetPwGetDiv(id);
+    var url = div ? div.getAttribute('data-mailto-url') : '';
+    if (url) window.location.href = url;
+}
+
+function _resetPwCopyEmail(id) {
+    var div = _resetPwGetDiv(id);
+    var body = div ? div.getAttribute('data-mail-body') : '';
+    if (body) copyToClipboard(body, 'Email text copied');
+}
+
+function _resetPwCopyPassword(id) {
+    var div = _resetPwGetDiv(id);
+    var pw = div ? div.getAttribute('data-temp-password') : '';
+    if (pw) copyToClipboard(pw, 'Password copied');
+}
+
 // ============================================================
 // Modal Functions
 // ============================================================
@@ -1854,7 +1876,7 @@ function renderUsers(users) {
                 <td style="padding:14px 15px;font-size:14px;color:#555;">${escapeHtml(status)}</td>
                 <td style="padding:14px 15px;font-size:14px;color:#555;">
                     <button class="edit" onclick="openUserEditModal(${u.id})">Edit</button>
-                    <button class="edit" onclick="openUserResetPasswordModal(${u.id}, '${escapeHtml(u.username)}')">Reset Password</button>
+                    <button class="edit" onclick="openUserResetPasswordModal(${u.id}, '${escapeHtml(u.username)}', '${escapeHtml(email)}')">Reset Password</button>
                     ${!u.is_admin ? `<button class="delete" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">Delete</button>` : ''}
                 </td>
             </tr>
@@ -1881,7 +1903,7 @@ function renderUsers(users) {
                     </div>
                     <div class="users-card__actions">
                         <button class="edit" onclick="openUserEditModal(${u.id})">Edit</button>
-                        <button class="edit" onclick="openUserResetPasswordModal(${u.id}, '${escapeHtml(u.username)}')">Reset</button>
+                        <button class="edit" onclick="openUserResetPasswordModal(${u.id}, '${escapeHtml(u.username)}', '${escapeHtml(email)}')">Reset</button>
                         ${!u.is_admin ? `<button class="delete" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">Delete</button>` : ''}
                     </div>
                 </div>
@@ -1948,9 +1970,10 @@ async function submitUserEdit(e) {
     }
 }
 
-function openUserResetPasswordModal(userId, username) {
+function openUserResetPasswordModal(userId, username, email) {
     document.getElementById('resetPasswordUserId').value = userId;
     document.getElementById('resetPasswordUsername').textContent = username;
+    document.getElementById('resetPasswordEmail').textContent = email || '';
     document.getElementById('resetPasswordError').style.display = 'none';
     openModal('userResetPasswordModal');
 }
@@ -2002,15 +2025,51 @@ async function submitUserResetPassword(e) {
         }
         const data = await response.json();
         setButtonPending(submitBtn, false);
-        successDiv.innerHTML = `
-            <div style="background:#e8f5e9;border-radius:8px;padding:16px;border-left:4px solid #2e7d32;">
-                <p style="margin:0 0 8px;font-weight:600;color:#2e7d32;">Password reset successfully</p>
-                <p style="margin:4px 0;"><strong>Temporary Password:</strong></p>
-                <div style="background:#fff;border:1px solid #c8e6c9;border-radius:6px;padding:10px 14px;font-family:monospace;font-size:16px;user-select:all;margin:4px 0 8px;">${escapeHtml(data.temporary_password)}</div>
-                <p style="margin:0;color:#e65100;font-size:13px;">User must change password on next login.</p>
-                <button type="button" style="margin-top:10px;" onclick="closeUserResetPasswordModal();loadUsers();">Done</button>
-            </div>
-        `;
+
+        var tempPassword = data.temporary_password;
+        var userEmail = data.email;
+        var adminEmail = data.admin_email || (currentUser && currentUser.email) || '';
+        var username = document.getElementById('resetPasswordUsername').textContent;
+        var loginUrl = APP_LOGIN_URL;
+        var mailSubject = 'Sample Management System \u2013 Password Reset';
+        var mailBody = [
+            'Hello,',
+            '',
+            'Your password has been reset in the Sample Management System.',
+            '',
+            'Username: ' + username,
+            'Temporary Password: ' + tempPassword,
+            'Login page: ' + loginUrl,
+            '',
+            'Please log in and change your password immediately on first login.',
+            '',
+            'If you have any issue, please contact your system administrator.',
+            '',
+            'Regards,',
+            adminEmail,
+        ].join('\r\n');
+
+        var mailtoUrl = 'mailto:' + encodeURIComponent(userEmail) +
+            '?subject=' + encodeURIComponent(mailSubject) +
+            '&body=' + encodeURIComponent(mailBody);
+
+        var resultId = 'resetPwResult_' + Date.now();
+        successDiv.innerHTML = [
+            '<div style="background:#e8f5e9;border-radius:8px;padding:16px;border-left:4px solid #2e7d32;" id="' + resultId + '" data-mailto-url="' + mailtoUrl.replace(/"/g, '&quot;') + '" data-mail-body="' + mailBody.replace(/"/g, '&quot;') + '" data-temp-password="' + tempPassword.replace(/"/g, '&quot;') + '">',
+            '<p style="margin:0 0 8px;font-weight:600;color:#2e7d32;">Password reset successfully</p>',
+            '<p style="margin:4px 0;"><strong>Username:</strong> ' + escapeHtml(username) + '</p>',
+            '<p style="margin:4px 0;"><strong>Email:</strong> ' + escapeHtml(userEmail) + '</p>',
+            '<p style="margin:4px 0;"><strong>Temporary Password:</strong></p>',
+            '<div style="background:#fff;border:1px solid #c8e6c9;border-radius:6px;padding:10px 14px;font-family:monospace;font-size:16px;user-select:all;margin:4px 0 8px;">' + escapeHtml(tempPassword) + '</div>',
+            '<div class="create-user-actions">',
+            '<button class="action-email-btn" onclick="_resetPwEmailUser(\'' + resultId + '\')">Email User</button>',
+            '<button class="action-copy-btn" onclick="_resetPwCopyEmail(\'' + resultId + '\')">Copy Email</button>',
+            '<button class="action-copy-btn" onclick="_resetPwCopyPassword(\'' + resultId + '\')">Copy Password</button>',
+            '</div>',
+            '<p style="margin:0;color:#e65100;font-size:13px;">User must change password on next login.</p>',
+            '<button type="button" style="margin-top:10px;" onclick="closeUserResetPasswordModal();loadUsers();">Done</button>',
+            '</div>',
+        ].join('');
         successDiv.style.display = 'block';
         document.querySelector('#userResetPasswordModal form').style.display = 'none';
     } catch (err) {

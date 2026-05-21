@@ -1193,7 +1193,7 @@ async def update_user(user_id: int, request: Request, payload: UserUpdateIn):
 @app.put("/api/users/{user_id}/reset-password")
 async def reset_user_password(user_id: int, request: Request):
     """Reset a user's password with a system-generated temporary password (admin-only)."""
-    await require_admin(request)
+    admin = await require_admin(request)
 
     database_url = _get_db_url()
     if is_postgres():
@@ -1216,6 +1216,25 @@ async def reset_user_password(user_id: int, request: Request):
     if not exists:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Fetch user email
+    email = ""
+    if is_postgres():
+        def _fetch_email():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT email FROM users WHERE id = %s", (user_id,))
+            r = cur.fetchone()
+            conn.close()
+            return r[0] if r else ""
+        email = await run_in_threadpool(_fetch_email)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT email FROM users WHERE id = ?", (user_id,))
+        r = await cur.fetchone()
+        email = r[0] if r else ""
+        await conn.close()
+
     temp_password = generate_temp_password()
     password_hash, salt = hash_password(temp_password)
 
@@ -1236,7 +1255,7 @@ async def reset_user_password(user_id: int, request: Request):
         await conn.commit()
         await conn.close()
 
-    return {"status": "ok", "temporary_password": temp_password, "must_change_password": True}
+    return {"status": "ok", "temporary_password": temp_password, "must_change_password": True, "email": email, "admin_email": admin.email}
 
 
 @app.delete("/api/users/{user_id}")
