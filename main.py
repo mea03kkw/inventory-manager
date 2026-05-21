@@ -150,6 +150,7 @@ class UserOut(BaseModel):
     id: int
     username: str
     display_name: str
+    email: str = ""
     is_admin: bool
     must_change_password: bool = False
 
@@ -294,7 +295,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
         def _query():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute("SELECT id, username, display_name, is_admin, is_active, must_change_password FROM users WHERE id = %s", (user_id,))
+            cur.execute("SELECT id, username, display_name, email, is_admin, is_active, must_change_password FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
             conn.close()
             return row
@@ -303,7 +304,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
         # aiosqlite
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        await cur.execute("SELECT id, username, display_name, is_admin, is_active, must_change_password FROM users WHERE id = ?", (user_id,))
+        await cur.execute("SELECT id, username, display_name, email, is_admin, is_active, must_change_password FROM users WHERE id = ?", (user_id,))
         row = await cur.fetchone()
         await conn.close()
 
@@ -311,7 +312,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
         request.session.clear()
         return None
 
-    user_id_val, username, display_name, is_admin, is_active, must_change_password = row
+    user_id_val, username, display_name, email, is_admin, is_active, must_change_password = row
     if not is_active:
         request.session.clear()
         return None
@@ -320,6 +321,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
         id=user_id_val,
         username=username,
         display_name=display_name or "",
+        email=email or "",
         is_admin=bool(is_admin),
         must_change_password=bool(must_change_password),
     )
@@ -730,7 +732,7 @@ async def login(request: Request, payload: LoginRequest):
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
             cur.execute(
-                "SELECT id, username, password_hash, salt, display_name, is_admin, is_active, must_change_password FROM users WHERE username = %s",
+                "SELECT id, username, password_hash, salt, display_name, email, is_admin, is_active, must_change_password FROM users WHERE username = %s",
                 (username_input,),
             )
             row = cur.fetchone()
@@ -741,7 +743,7 @@ async def login(request: Request, payload: LoginRequest):
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
         await cur.execute(
-            "SELECT id, username, password_hash, salt, display_name, is_admin, is_active, must_change_password FROM users WHERE username = ?",
+            "SELECT id, username, password_hash, salt, display_name, email, is_admin, is_active, must_change_password FROM users WHERE username = ?",
             (username_input,),
         )
         row = await cur.fetchone()
@@ -750,7 +752,7 @@ async def login(request: Request, payload: LoginRequest):
     if row is None:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    user_id, username, password_hash, salt, display_name, is_admin, is_active, must_change_password = row
+    user_id, username, password_hash, salt, display_name, email, is_admin, is_active, must_change_password = row
     if not is_active:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
@@ -783,6 +785,7 @@ async def login(request: Request, payload: LoginRequest):
         "id": user_id,
         "username": username,
         "display_name": display_name or "",
+        "email": email or "",
         "is_admin": bool(is_admin),
         "must_change_password": bool(must_change_password),
     })
@@ -878,6 +881,7 @@ async def admin_create_user(request: Request, payload: AdminCreateUserIn):
         "email": email,
         "temporary_password": temp_password,
         "must_change_password": True,
+        "admin_email": admin.email,
     }
 
 

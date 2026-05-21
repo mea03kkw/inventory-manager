@@ -4,6 +4,47 @@
 
 const API_BASE = '/api';
 
+const APP_LOGIN_URL = "https://moko-sample.up.railway.app/";
+
+var _adminContactEmail = '';
+
+function loadAdminContactEmail() {
+    fetch('/api/settings/admin-contact')
+        .then(function(r) { return r.json(); })
+        .then(function(contact) {
+            _adminContactEmail = contact.email || '';
+        })
+        .catch(function() {
+            _adminContactEmail = '';
+        });
+}
+
+function openAdminDirectMailto(subject, body) {
+    var email = _adminContactEmail;
+    if (!email) {
+        showToast('Could not determine admin contact email', 'error');
+        return;
+    }
+    var mailto = 'mailto:' + encodeURIComponent(email) +
+        '?subject=' + encodeURIComponent(subject) +
+        '&body=' + encodeURIComponent(body);
+    window.location.href = mailto;
+}
+
+function openRegisterMailto() {
+    openAdminDirectMailto(
+        'Sample Management System \u2013 Account Request',
+        'Hello,\r\n\r\nPlease create an account for me.\r\n\r\nThanks.'
+    );
+}
+
+function openForgotPasswordMailto() {
+    openAdminDirectMailto(
+        'Sample Management System \u2013 Password Reset',
+        'Hello,\r\n\r\nPlease reset my password.\r\n\r\nThanks.'
+    );
+}
+
 const API = {
     // Auth
     login: () => `${API_BASE}/auth/login`,
@@ -72,7 +113,6 @@ function updateAuthUI() {
     } else {
         bar.innerHTML = `
             <button class="edit" onclick="openLoginModal()">Login</button>
-            <button class="edit" onclick="showRegisterInfo()">Register</button>
         `;
     }
     updateUIBasedOnRole();
@@ -118,14 +158,10 @@ function openLoginModal() {
     document.getElementById('loginUsername').value = '';
     document.getElementById('loginPassword').value = '';
     openModal('loginModal');
-    // Load admin contact email
+    // Show admin contact email from preloaded value
     const emailSpan = document.getElementById('adminContactEmail');
     if (emailSpan) {
-        fetch('/api/settings/admin-contact').then(r => r.json()).then(contact => {
-            emailSpan.textContent = contact.email || 'jenny.yc.cheung@philips.com';
-        }).catch(() => {
-            emailSpan.textContent = 'jenny.yc.cheung@philips.com';
-        });
+        emailSpan.textContent = _adminContactEmail || '';
     }
 }
 
@@ -327,15 +363,52 @@ async function adminCreateUser() {
             throw new Error(err.detail || 'Failed to create user');
         }
         const data = await response.json();
+        const createdUsername = data.username;
+        const createdEmail = data.email;
+        const tempPassword = data.temporary_password;
+        const adminEmail = data.admin_email || (currentUser && currentUser.email) || '';
+        const loginUrl = APP_LOGIN_URL;
+
+        var mailSubject = 'Sample Management System \u2013 Account Created';
+        var mailBody = [
+            'Hello,',
+            '',
+            'An account has been created for you in the Sample Management System.',
+            '',
+            'Username: ' + createdUsername,
+            'Temporary Password: ' + tempPassword,
+            'Login page: ' + loginUrl,
+            '',
+            'Please log in and change your password immediately on first login.',
+            '',
+            'If you have any issue, please contact your system administrator.',
+            '',
+            'Regards,',
+            adminEmail,
+        ].join('\r\n');
+
+        var mailtoUrl = 'mailto:' + encodeURIComponent(createdEmail) +
+            '?subject=' + encodeURIComponent(mailSubject) +
+            '&body=' + encodeURIComponent(mailBody);
+
+        resultDiv.setAttribute('data-mailto-url', mailtoUrl);
+        resultDiv.setAttribute('data-mail-body', mailBody);
+        resultDiv.setAttribute('data-temp-password', tempPassword);
+
         resultDiv.style.display = 'block';
-        resultDiv.innerHTML = `
-            <p style="margin:0 0 8px;font-weight:600;color:#2e7d32;">Account created successfully</p>
-            <p style="margin:4px 0;"><strong>Username:</strong> ${escapeHtml(data.username)}</p>
-            <p style="margin:4px 0;"><strong>Email:</strong> ${escapeHtml(data.email)}</p>
-            <p style="margin:4px 0;"><strong>Temporary Password:</strong></p>
-            <div style="background:#fff;border:1px solid #c8e6c9;border-radius:6px;padding:10px 14px;font-family:monospace;font-size:16px;user-select:all;margin:4px 0 8px;">${escapeHtml(data.temporary_password)}</div>
-            <p style="margin:8px 0 0;color:#e65100;font-size:13px;">User must change password on first login.</p>
-        `;
+        resultDiv.innerHTML = [
+            '<p style="margin:0 0 8px;font-weight:600;color:#2e7d32;">Account created successfully</p>',
+            '<p style="margin:4px 0;"><strong>Username:</strong> ' + escapeHtml(createdUsername) + '</p>',
+            '<p style="margin:4px 0;"><strong>Email:</strong> ' + escapeHtml(createdEmail) + '</p>',
+            '<p style="margin:4px 0;"><strong>Temporary Password:</strong></p>',
+            '<div style="background:#fff;border:1px solid #c8e6c9;border-radius:6px;padding:10px 14px;font-family:monospace;font-size:16px;user-select:all;margin:4px 0 8px;">' + escapeHtml(tempPassword) + '</div>',
+            '<div class="create-user-actions">',
+            '<button class="action-email-btn" onclick="_emailCreatedUser()">Email User</button>',
+            '<button class="action-copy-btn" onclick="_copyCreateUserEmail()">Copy Email</button>',
+            '<button class="action-copy-btn" onclick="_copyCreateUserPassword()">Copy Password</button>',
+            '</div>',
+            '<p style="margin:8px 0 0;color:#e65100;font-size:13px;">User must change password on first login.</p>',
+        ].join('');
         document.getElementById('createUserEmail').value = '';
         document.getElementById('createUserDerivedUsername').textContent = '(auto-derived from email)';
         loadUsers();
@@ -573,6 +646,57 @@ function toggleHistorySection() {
         container.classList.add('hidden');
         arrow.textContent = '\u25bc';
     }
+}
+
+// ============================================================
+// Clipboard & Create-User Action Helpers
+// ============================================================
+
+function copyToClipboard(text, successMsg) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+            showToast(successMsg || 'Copied', 'success');
+        }).catch(function() {
+            fallbackCopyToClipboard(text, successMsg);
+        });
+    } else {
+        fallbackCopyToClipboard(text, successMsg);
+    }
+}
+
+function fallbackCopyToClipboard(text, successMsg) {
+    var textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        showToast(successMsg || 'Copied', 'success');
+    } catch (e) {
+        showToast('Copy failed', 'error');
+    }
+    document.body.removeChild(textarea);
+}
+
+function _emailCreatedUser() {
+    var div = document.getElementById('createUserResult');
+    var url = div ? div.getAttribute('data-mailto-url') : '';
+    if (url) window.location.href = url;
+}
+
+function _copyCreateUserEmail() {
+    var div = document.getElementById('createUserResult');
+    var body = div ? div.getAttribute('data-mail-body') : '';
+    if (body) copyToClipboard(body, 'Email text copied');
+}
+
+function _copyCreateUserPassword() {
+    var div = document.getElementById('createUserResult');
+    var pw = div ? div.getAttribute('data-temp-password') : '';
+    if (pw) copyToClipboard(pw, 'Password copied');
 }
 
 // ============================================================
@@ -1921,6 +2045,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Restore auth session
     loadCurrentUser();
+
+    loadAdminContactEmail();
 
     loadItems();
 
