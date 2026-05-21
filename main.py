@@ -425,7 +425,6 @@ async def root():
 # Startup event - database initialization
 # ============================================================================
 
-@app.on_event("startup")
 def init_db():
     conn = _get_sync_db()
     cur = conn.cursor()
@@ -683,11 +682,20 @@ def init_db():
 
 
 # ============================================================================
+# Async startup wrapper to avoid blocking the event loop
+# ============================================================================
+
+@app.on_event("startup")
+async def init_db_async():
+    await run_in_threadpool(init_db)
+
+
+# ============================================================================
 # Ensure database is initialized on import (for TestClient/script usage)
 # This serves as a fallback in addition to the @app.on_event("startup") hook
 # ============================================================================
 
-if os.getenv("RUN_INIT_DB_ON_IMPORT", "1") == "1":
+if os.getenv("RUN_INIT_DB_ON_IMPORT", "0") == "1":
     try:
         init_db()
     except Exception as e:
