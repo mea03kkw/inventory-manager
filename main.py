@@ -453,8 +453,9 @@ def init_db():
         # Add email column if not exists
         # Add email column if not exists
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)")
-        # Add unique index for non-null emails
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL")
+        # Drop unique index on email — uniqueness enforced at Python level with
+        # exemption for user ID=1 (primary admin account can reuse any email)
+        cur.execute("DROP INDEX IF EXISTS idx_users_email")
         # Add must_change_password column if not exists
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE")
         # Settings table for app-level configuration
@@ -491,8 +492,9 @@ def init_db():
             cur.execute("ALTER TABLE users ADD COLUMN email TEXT")
         if 'must_change_password' not in columns:
             cur.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
-        # Add unique index for non-null emails
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL")
+        # Drop unique index on email — enforced at Python level with
+        # exemption for user ID=1 (primary admin account can reuse any email)
+        cur.execute("DROP INDEX IF EXISTS idx_users_email")
 
     # Seed minimal development users if table is empty
     cur.execute("SELECT COUNT(*) FROM users")
@@ -854,10 +856,6 @@ async def admin_create_user(request: Request, payload: AdminCreateUserIn):
             if cur.fetchone():
                 conn.close()
                 raise HTTPException(status_code=400, detail="Username already exists")
-            cur.execute("SELECT id FROM users WHERE email = %s", (email,))
-            if cur.fetchone():
-                conn.close()
-                raise HTTPException(status_code=400, detail="Email already registered")
             cur.execute(
                 """INSERT INTO users (username, password_hash, salt, display_name, is_admin, is_active, email, must_change_password)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
@@ -874,10 +872,6 @@ async def admin_create_user(request: Request, payload: AdminCreateUserIn):
         if await cur.fetchone():
             await conn.close()
             raise HTTPException(status_code=400, detail="Username already exists")
-        await cur.execute("SELECT id FROM users WHERE email = ?", (email,))
-        if await cur.fetchone():
-            await conn.close()
-            raise HTTPException(status_code=400, detail="Email already registered")
         await cur.execute(
             """INSERT INTO users (username, password_hash, salt, display_name, is_admin, is_active, email, must_change_password)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -1136,24 +1130,7 @@ async def update_user(user_id: int, request: Request, payload: UserUpdateIn):
         if new_email:
             if not new_email.endswith("@philips.com"):
                 raise HTTPException(status_code=400, detail="Email must end with @philips.com")
-            if is_postgres():
-                def _check_email():
-                    conn = psycopg2.connect(database_url)
-                    cur = conn.cursor()
-                    cur.execute("SELECT id FROM users WHERE email = %s AND id != %s", (new_email, user_id))
-                    row = cur.fetchone()
-                    conn.close()
-                    return row
-                dup = await run_in_threadpool(_check_email)
-            else:
-                conn = await aiosqlite.connect("sample_management.db")
-                cur = await conn.cursor()
-                await cur.execute("SELECT id FROM users WHERE email = ? AND id != ?", (new_email, user_id))
-                dup = await cur.fetchone()
-                await conn.close()
-            if dup:
-                raise HTTPException(status_code=400, detail="Email already in use by another user")
-        updates["email"] = new_email
+            updates["email"] = new_email
 
     if payload.display_name is not None:
         updates["display_name"] = payload.display_name
