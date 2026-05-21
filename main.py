@@ -140,6 +140,10 @@ class AdminCreateUserIn(BaseModel):
     role: str = "user"
 
 
+class AdminContactIn(BaseModel):
+    email: str
+
+
 class ChangePasswordIn(BaseModel):
     old_password: str
     new_password: str
@@ -453,6 +457,13 @@ def init_db():
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL")
         # Add must_change_password column if not exists
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE")
+        # Settings table for app-level configuration
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key VARCHAR(255) PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
     else:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -990,13 +1001,13 @@ async def list_users(request: Request):
 
 @app.get("/api/settings/admin-contact")
 async def get_admin_contact():
-    """Get the admin user's display name and email for contact purposes."""
+    """Get the configured admin contact email from app settings."""
     database_url = _get_db_url()
     if is_postgres():
         def _query():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute("SELECT display_name, email FROM users WHERE is_admin = TRUE AND is_active = TRUE LIMIT 1")
+            cur.execute("SELECT value FROM settings WHERE key = 'admin_contact_email'")
             row = cur.fetchone()
             conn.close()
             return row
@@ -1004,12 +1015,49 @@ async def get_admin_contact():
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        await cur.execute("SELECT display_name, email FROM users WHERE is_admin = 1 AND is_active = 1 LIMIT 1")
+        await cur.execute("SELECT value FROM settings WHERE key = 'admin_contact_email'")
         row = await cur.fetchone()
         await conn.close()
-    if row and row[1]:
-        return {"name": row[0] or "System Administrator", "email": row[1]}
+    if row and row[0]:
+        return {"name": "System Administrator", "email": row[0]}
     return {"name": "System Administrator", "email": ""}
+
+
+@app.put("/api/settings/admin-contact")
+async def update_admin_contact(request: Request, payload: AdminContactIn):
+    """Update the admin contact email in app settings (admin-only)."""
+    await require_admin(request)
+
+    email = payload.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    if not email.endswith("@philips.com"):
+        raise HTTPException(status_code=400, detail="Email must end with @philips.com")
+
+    database_url = _get_db_url()
+    ph = placeholder()
+    if is_postgres():
+        def _upsert():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute(
+                f"INSERT INTO settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = %s",
+                ("admin_contact_email", email, email),
+            )
+            conn.commit()
+            conn.close()
+        await run_in_threadpool(_upsert)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            ("admin_contact_email", email),
+        )
+        await conn.commit()
+        await conn.close()
+
+    return {"status": "ok", "email": email}
 
 
 @app.get("/api/users/{user_id}")
