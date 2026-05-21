@@ -1035,7 +1035,6 @@ async def update_admin_contact(request: Request, payload: AdminContactIn):
         raise HTTPException(status_code=400, detail="Email must end with @philips.com")
 
     database_url = _get_db_url()
-    ph = placeholder()
     if is_postgres():
         def _upsert():
             conn = psycopg2.connect(database_url)

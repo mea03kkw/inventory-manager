@@ -210,12 +210,11 @@ function showInfoModal(title, message) {
 
 function showRegisterInfo() {
     fetch('/api/settings/admin-contact').then(r => r.json()).then(contact => {
-        const name = contact.name || 'System Administrator';
-        const email = contact.email || 'jenny.yc.cheung@philips.com';
+        const email = contact.email || '';
         const link = email ? `<a href="mailto:${escapeHtml(email)}" style="color:#3f51b5;text-decoration:underline;">${escapeHtml(email)}</a>` : 'your system administrator';
         showInfoModal('Contact Administrator',
             'Account registration is restricted.<br><br>' +
-            `Please contact <strong>${escapeHtml(name)}</strong> at ${link} for account setup or password reset.`
+            `Please contact ${link} for account setup or password reset.`
         );
     }).catch(() => {
         showInfoModal('Contact Administrator',
@@ -227,12 +226,11 @@ function showRegisterInfo() {
 
 function showForgotPasswordInfo() {
     fetch('/api/settings/admin-contact').then(r => r.json()).then(contact => {
-        const name = contact.name || 'System Administrator';
-        const email = contact.email || 'jenny.yc.cheung@philips.com';
+        const email = contact.email || '';
         const link = email ? `<a href="mailto:${escapeHtml(email)}" style="color:#3f51b5;text-decoration:underline;">${escapeHtml(email)}</a>` : 'your system administrator';
         showInfoModal('Forgot Password',
             'Password reset is handled by the administrator.<br><br>' +
-            `Please contact <strong>${escapeHtml(name)}</strong> at ${link}.`
+            `Please contact ${link}.`
         );
     }).catch(() => {
         showInfoModal('Forgot Password',
