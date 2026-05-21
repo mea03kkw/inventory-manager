@@ -17,9 +17,11 @@
             <h1>Sample Management System</h1>
             <div class="nav-menu" id="navMenu">
                 <div class="nav-tabs">
-                    <button class="nav-tab active" onclick="showSection('samples')">Samples</button>
-                    <button class="nav-tab" data-admin-only onclick="showSection('dashboard')">Dashboard</button>
-                    <button class="nav-tab" data-admin-only onclick="showSection('users')">Users</button>
+                    <button class="nav-tab active" data-section="samples" onclick="showSection('samples')">Browse Samples</button>
+                    <button class="nav-tab" data-section="my-samples" data-auth-only onclick="showSection('my-samples')">My Checkouts</button>
+                    <button class="nav-tab" data-section="my-profile" data-auth-only onclick="showSection('my-profile')">My Profile</button>
+                    <button class="nav-tab" data-section="dashboard" data-admin-only onclick="showSection('dashboard')">Dashboard</button>
+                    <button class="nav-tab" data-section="users" data-admin-only onclick="showSection('users')">Users</button>
                 </div>
             </div>
         </div>
@@ -181,6 +183,188 @@
             </table>
         </div>
         <div id="usersCards" class="users-cards"></div>
+    </div>
+
+    <!-- My Samples Section -->
+    <div id="my-samples-page" class="section hidden">
+        <div class="my-samples-header">
+            <h2 class="page-title">My Checkouts</h2>
+            <p class="page-subtitle">View and manage samples currently checked out under your account.</p>
+        </div>
+
+        <div class="my-samples-summary-grid" id="my-samples-summary-grid">
+            <div class="summary-card" id="summary-currently-checked-out">
+                <div class="summary-card-icon summary-icon-blue">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                </div>
+                <div class="summary-card-count" id="summary-count-checked-out">0</div>
+                <div class="summary-card-label">Currently Checked Out</div>
+            </div>
+            <div class="summary-card" id="summary-overdue">
+                <div class="summary-card-icon summary-icon-danger">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D92D20" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </div>
+                <div class="summary-card-count" id="summary-count-overdue">0</div>
+                <div class="summary-card-label">Overdue</div>
+            </div>
+            <div class="summary-card" id="summary-due-soon">
+                <div class="summary-card-icon summary-icon-warning">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div class="summary-card-count" id="summary-count-due-soon">0</div>
+                <div class="summary-card-label">Due Soon</div>
+            </div>
+            <div class="summary-card" id="summary-returned-this-month">
+                <div class="summary-card-icon summary-icon-success">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2EAF56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+                <div class="summary-card-count" id="summary-count-returned-this-month">0</div>
+                <div class="summary-card-label">Returned This Month</div>
+            </div>
+        </div>
+
+        <div class="my-samples-toolbar">
+            <input type="text" id="my-samples-search" placeholder="Search my checkouts" oninput="loadMySamples()">
+            <div class="my-samples-filter-bar" id="my-samples-filter-bar">
+                <button class="filter-chip active" data-filter="all" onclick="setMySamplesFilter('all')">All Active</button>
+                <button class="filter-chip" data-filter="overdue" onclick="setMySamplesFilter('overdue')">Overdue</button>
+                <button class="filter-chip" data-filter="due_soon" onclick="setMySamplesFilter('due_soon')">Due Soon</button>
+                <button class="filter-chip" data-filter="history" onclick="setMySamplesFilter('history')">Returned History</button>
+            </div>
+        </div>
+
+        <div class="my-samples-section" id="my-samples-active-section">
+            <h3 class="section-title">Active Checkouts</h3>
+            <p class="section-helper">Only samples currently checked out under your account are shown here.</p>
+
+            <div id="active-checkouts-list">
+                <div id="active-loading" class="loading-placeholder">Loading active checkouts...</div>
+                <!-- Mobile cards -->
+                <div id="active-checkouts-cards" class="my-samples-cards"></div>
+                <!-- Desktop table -->
+                <div class="my-samples-table-container" id="active-checkouts-table-container">
+                    <table class="my-samples-table">
+                        <thead>
+                            <tr>
+                                <th>Sample</th>
+                                <th>Category</th>
+                                <th>Qty</th>
+                                <th>Checkout Date</th>
+                                <th>Due Date</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="active-checkouts-table-body"></tbody>
+                    </table>
+                </div>
+                <div id="active-checkouts-empty" class="empty-state-card hidden">
+                    <div class="empty-state-icon"></div>
+                    <h4>No active checkouts</h4>
+                    <p>You currently do not have any samples checked out.</p>
+                    <button class="btn-primary" onclick="showSection('samples')">Browse Samples</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="my-samples-section" id="my-samples-history-section">
+            <h3 class="section-title">History</h3>
+            <p class="section-helper">Previously returned samples under your account.</p>
+            <div id="history-list">
+                <div id="history-loading" class="loading-placeholder">Loading history...</div>
+                <div id="history-cards" class="my-samples-cards"></div>
+                <div class="my-samples-table-container" id="history-table-container">
+                    <table class="my-samples-table">
+                        <thead>
+                            <tr>
+                                <th>Sample</th>
+                                <th>Qty</th>
+                                <th>Checkout Date</th>
+                                <th>Returned Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body"></tbody>
+                    </table>
+                </div>
+                <div id="history-empty" class="empty-state-card hidden">
+                    <div class="empty-state-icon"></div>
+                    <h4>No history yet</h4>
+                    <p>Returned samples will appear here after checkout records are completed.</p>
+                </div>
+                <div id="history-pagination" class="pagination-bar hidden">
+                    <button class="btn-secondary" id="history-load-more" onclick="loadMoreHistory()">Load More</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- My Profile Section -->
+    <div id="my-profile-page" class="section hidden">
+        <div class="my-samples-header">
+            <h2 class="page-title">My Profile</h2>
+            <p class="page-subtitle">View your account information and manage your password.</p>
+        </div>
+
+        <div class="my-profile-grid">
+            <div class="card" id="profile-info-card">
+                <h3 class="card-title">Account Information</h3>
+                <div class="profile-info-body">
+                    <div class="profile-field">
+                        <span class="profile-label">Username</span>
+                        <span class="profile-value" id="profile-username">-</span>
+                    </div>
+                    <div class="profile-field">
+                        <span class="profile-label">Email</span>
+                        <span class="profile-value" id="profile-email">-</span>
+                    </div>
+                    <div class="profile-field">
+                        <span class="profile-label">Role</span>
+                        <span class="profile-value" id="profile-role">-</span>
+                    </div>
+                    <div class="profile-field">
+                        <span class="profile-label">Account Status</span>
+                        <span class="profile-value" id="profile-status">-</span>
+                    </div>
+                    <div class="profile-pw-action">
+                        <button class="btn-primary" onclick="openChangePasswordModal()">Change Password</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- My Samples Return Confirmation Modal -->
+    <div id="myReturnModal" class="modal" onclick="if(event.target===this)closeModal()">
+        <div class="modal-content" style="max-width:460px;">
+            <div class="modal-header">
+                <h3>Return sample?</h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div style="padding:20px 25px;">
+                <p style="color:#5B6B7A;font-size:14px;margin:0 0 16px;" id="myReturnModalBody">Confirm return for this checked-out sample.</p>
+                <div id="myReturnQuantityGroup" class="form-group" style="margin-bottom:12px;">
+                    <label for="myReturnQuantity">Return Quantity</label>
+                    <input type="number" id="myReturnQuantity" min="1" value="1">
+                </div>
+                <div class="form-actions" style="border-top:none;padding-top:0;">
+                    <button type="button" class="btn-primary" id="myReturnConfirmBtn" onclick="confirmMyReturn()">Confirm Return</button>
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+                </div>
+                <div id="myReturnError" class="field-error" style="display:none;margin-top:8px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- My Samples Detail Modal -->
+    <div id="mySampleDetailModal" class="modal" onclick="if(event.target===this)closeModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Sample Details</h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="mySampleDetailContent"></div>
+        </div>
     </div>
 
 <!-- Add/Edit Modal -->
@@ -520,7 +704,7 @@
     <script src="/static/app.js"></script>
 
     <footer class="app-footer">
-        <div class="app-footer__version">Sample Management System v1.2</div>
+        <div class="app-footer__version">Sample Management System v1.3</div>
         <div class="app-footer__contact">
             Need help or want to report a bug? Contact the system administrator or the web app developer.
             <br>Web app developer: Kaye Wong

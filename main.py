@@ -4,6 +4,7 @@
 # ============================================================================
 
 import os
+from datetime import date, datetime, timedelta
 from typing import Optional, Tuple
 
 from fastapi import FastAPI, Request, HTTPException, Depends
@@ -821,12 +822,36 @@ async def get_me(request: Request):
 
 
 @app.post("/api/auth/register")
-async def register():
-    """Public registration is disabled."""
-    raise HTTPException(
-        status_code=403,
-        detail="Registration is disabled. Please contact Jenny Cheung at jenny.yc.cheung@philips.com."
-    )
+async def register(request: Request):
+    """Public registration is disabled. Uses configured admin contact."""
+    admin_email = ""
+    database_url = _get_db_url()
+    try:
+        if is_postgres():
+            def _fetch():
+                conn = psycopg2.connect(database_url)
+                cur = conn.cursor()
+                cur.execute("SELECT email FROM users WHERE id = 1")
+                row = cur.fetchone()
+                conn.close()
+                return row[0] if row else ""
+            admin_email = await run_in_threadpool(_fetch)
+        else:
+            conn = await aiosqlite.connect("sample_management.db")
+            cur = await conn.cursor()
+            await cur.execute("SELECT email FROM users WHERE id = 1")
+            row = await cur.fetchone()
+            await conn.close()
+            admin_email = row[0] if row else ""
+    except Exception:
+        pass
+
+    if admin_email:
+        detail = f"Registration is disabled. Please contact the system administrator at {admin_email}."
+    else:
+        detail = "Registration is disabled. Please contact the system administrator."
+
+    raise HTTPException(status_code=403, detail=detail)
 
 
 @app.post("/api/auth/admin/create-user")
@@ -1339,6 +1364,496 @@ async def delete_user(user_id: int, request: Request):
     return {"status": "ok"}
 
 
+class MePasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
+# ============================================================================
+# Shared helper for personal-record identity matching
+# ============================================================================
+
+def _get_borrower_identity_conditions(user, email=None):
+    """Build identity matching criteria for personal checkout record queries.
+
+    Returns (conditions_list, params_list) where conditions_list contains
+    SQL boolean expressions using %s placeholders (PostgreSQL style).
+    Callers should replace %s with ? for SQLite.
+
+    Matching priority:
+    1. borrower_email match (most stable) — used when user has non-empty email
+    2. borrower_name match (legacy fallback) — display_name or username
+    """
+    conditions = []
+    params = []
+
+    user_email = (email or user.email or "").strip().lower()
+    user_display = user.display_name.strip() if user.display_name else ""
+    user_username = user.username.strip() if user.username else ""
+
+    if user_email:
+        conditions.append("LOWER(TRIM(borrower_email)) = %s")
+        params.append(user_email)
+
+    name_set = set()
+    if user_display:
+        name_set.add(user_display)
+    if user_username:
+        name_set.add(user_username)
+    name_set.discard("")
+
+    if name_set:
+        sorted_names = sorted(name_set)
+        placeholders = ", ".join(["%s"] * len(sorted_names))
+        conditions.append(f"TRIM(borrower_name) IN ({placeholders})")
+        params.extend(sorted_names)
+
+    return conditions, params
+
+
+def _identity_where_clause(conditions, params, use_pg=True):
+    """Build a WHERE clause from identity conditions, adapting placeholders."""
+    if not conditions:
+        return "1=0", params
+    clause = " OR ".join(f"({c})" for c in conditions)
+    if not use_pg:
+        clause = clause.replace("%s", "?")
+    return clause, params
+
+
+# ============================================================================
+# My Personal Area — Self-Scoped Endpoints
+# ============================================================================
+
+@app.get("/api/me/sample-summary")
+async def get_my_sample_summary(request: Request):
+    """Get personal summary counts scoped to the authenticated user."""
+    user = await require_login(request)
+    conds, params = _get_borrower_identity_conditions(user)
+    database_url = _get_db_url()
+    today = date.today().isoformat()
+    seven_days = (date.today() + timedelta(days=7)).isoformat()
+
+    if is_postgres():
+        use_pg = True
+    else:
+        use_pg = False
+
+    identity_clause, identity_params = _identity_where_clause(conds, params, use_pg=use_pg)
+    ph = "%s" if use_pg else "?"
+
+    if use_pg:
+        def _query():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+
+            cur.execute(f"""
+                SELECT COUNT(*) FROM checkout_records
+                WHERE checkout_status = 'OUT' AND ({identity_clause})
+            """, identity_params)
+            currently_checked_out = cur.fetchone()[0]
+
+            cur.execute(f"""
+                SELECT COUNT(*) FROM checkout_records
+                WHERE checkout_status = 'OUT' AND ({identity_clause})
+                  AND expected_return_date != '' AND expected_return_date < {ph}
+            """, identity_params + [today])
+            overdue = cur.fetchone()[0]
+
+            cur.execute(f"""
+                SELECT COUNT(*) FROM checkout_records
+                WHERE checkout_status = 'OUT' AND ({identity_clause})
+                  AND expected_return_date != '' AND expected_return_date >= {ph}
+                  AND expected_return_date <= {ph}
+            """, identity_params + [today, seven_days])
+            due_soon = cur.fetchone()[0]
+
+            cur.execute(f"""
+                SELECT COUNT(*) FROM checkout_records
+                WHERE checkout_status = 'RETURNED' AND ({identity_clause})
+                  AND actual_return_date != '' AND actual_return_date LIKE {ph}
+            """, identity_params + [today[:7] + "%"])
+            returned_this_month = cur.fetchone()[0]
+
+            conn.close()
+            return {
+                "currently_checked_out": currently_checked_out,
+                "overdue": overdue,
+                "due_soon": due_soon,
+                "returned_this_month": returned_this_month,
+            }
+        return await _safe_pg_query(_query)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+
+        await cur.execute(f"""
+            SELECT COUNT(*) FROM checkout_records
+            WHERE checkout_status = 'OUT' AND ({identity_clause})
+        """, identity_params)
+        currently_checked_out = (await cur.fetchone())[0]
+
+        await cur.execute(f"""
+            SELECT COUNT(*) FROM checkout_records
+            WHERE checkout_status = 'OUT' AND ({identity_clause})
+              AND expected_return_date != '' AND expected_return_date < {ph}
+        """, identity_params + [today])
+        overdue = (await cur.fetchone())[0]
+
+        await cur.execute(f"""
+            SELECT COUNT(*) FROM checkout_records
+            WHERE checkout_status = 'OUT' AND ({identity_clause})
+              AND expected_return_date != '' AND expected_return_date >= {ph}
+              AND expected_return_date <= {ph}
+        """, identity_params + [today, seven_days])
+        due_soon = (await cur.fetchone())[0]
+
+        await cur.execute(f"""
+            SELECT COUNT(*) FROM checkout_records
+            WHERE checkout_status = 'RETURNED' AND ({identity_clause})
+              AND actual_return_date != '' AND actual_return_date LIKE {ph}
+        """, identity_params + [today[:7] + "%"])
+        returned_this_month = (await cur.fetchone())[0]
+
+        await conn.close()
+        return {
+            "currently_checked_out": currently_checked_out,
+            "overdue": overdue,
+            "due_soon": due_soon,
+            "returned_this_month": returned_this_month,
+        }
+
+
+@app.get("/api/me/active-checkouts")
+async def get_my_active_checkouts(
+    request: Request,
+    filter: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+):
+    """Get the authenticated user's active checkout records."""
+    user = await require_login(request)
+    conds, params = _get_borrower_identity_conditions(user)
+    use_pg = is_postgres()
+    identity_clause, identity_params = _identity_where_clause(conds, params, use_pg=use_pg)
+    database_url = _get_db_url()
+    today = date.today().isoformat()
+    seven_days = (date.today() + timedelta(days=7)).isoformat()
+    ph = "%s" if use_pg else "?"
+
+    if use_pg:
+        pg_iliak = " ILIKE "
+        pg_nulls = " NULLS LAST "
+    else:
+        pg_iliak = " LIKE "
+        pg_nulls = " "
+
+    def _build_query(sql_base, sql_params, use_pg):
+        sql = sql_base
+        if filter == "overdue":
+            sql += f" AND cr.expected_return_date != '' AND cr.expected_return_date < {ph}"
+            sql_params.append(today)
+        elif filter == "due_soon":
+            sql += f" AND cr.expected_return_date != '' AND cr.expected_return_date >= {ph} AND cr.expected_return_date <= {ph}"
+            sql_params.extend([today, seven_days])
+        elif filter == "no_due_date":
+            sql += " AND (cr.expected_return_date IS NULL OR cr.expected_return_date = '')"
+
+        if search:
+            if use_pg:
+                sql += f" AND (COALESCE(i.\"Title\", cr.sample_title) {pg_iliak}{ph} OR COALESCE(i.\"SerialNum\", cr.sample_serial) {pg_iliak}{ph} OR cr.sample_type {pg_iliak}{ph})"
+            else:
+                sql += f" AND (COALESCE(i.Title, cr.sample_title) {pg_iliak}{ph} OR COALESCE(i.SerialNum, cr.sample_serial) {pg_iliak}{ph} OR cr.sample_type {pg_iliak}{ph})"
+            like = f"%{search}%"
+            sql_params.extend([like, like, like])
+
+        sql += f" ORDER BY cr.expected_return_date ASC{pg_nulls}, cr.checkout_date ASC"
+        offset = (page - 1) * page_size
+        sql += f" LIMIT {ph} OFFSET {ph}"
+        sql_params.extend([page_size, offset])
+        return sql, sql_params
+
+    def _process_rows(rows, col_names):
+        items = []
+        for row in rows:
+            r = dict(zip(col_names, row)) if col_names else dict(row)
+            due_date = r.get("expected_return_date") or ""
+            status = "active"
+            if due_date and due_date < today:
+                status = "overdue"
+            elif due_date and due_date >= today and due_date <= seven_days:
+                status = "due_soon"
+            items.append({
+                "checkout_id": r["id"],
+                "sample_id": r["sample_id"],
+                "sample_name": r.get("item_title") or r.get("sample_title") or "",
+                "sample_code": r.get("item_serial") or r.get("sample_serial") or "",
+                "sample_type": r.get("item_type") or r.get("sample_type") or "",
+                "category": r.get("Category") or "",
+                "model": r.get("Model") or "",
+                "quantity": r["quantity"],
+                "checkout_date": r["checkout_date"] or "",
+                "due_date": due_date,
+                "status": status,
+            })
+        return items
+
+    if use_pg:
+        sql_base = f"""
+            SELECT cr.id, cr.sample_id, cr.quantity,
+                   cr.checkout_date, cr.expected_return_date,
+                   cr.sample_title, cr.sample_serial, cr.sample_type,
+                   cr.storage_location_code,
+                   COALESCE(i."Title", cr.sample_title) as item_title,
+                   COALESCE(i."SerialNum", cr.sample_serial) as item_serial,
+                   COALESCE(i."SampleType", cr.sample_type) as item_type,
+                   COALESCE(i."StorageLocationCode", cr.storage_location_code) as item_location,
+                   i."Category", i."Model"
+            FROM checkout_records cr
+            LEFT JOIN inventory i ON cr.sample_id = i.id
+            WHERE cr.checkout_status = 'OUT' AND ({identity_clause})
+        """
+        query_params = identity_params.copy()
+        sql, query_params = _build_query(sql_base, query_params, True)
+
+        def _query():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute(sql, query_params)
+            rows = cur.fetchall()
+            col_names = [d[0] for d in cur.description]
+            conn.close()
+            return _process_rows(rows, col_names)
+        return await _safe_pg_query(_query)
+    else:
+        sql_base = f"""
+            SELECT cr.id, cr.sample_id, cr.quantity,
+                   cr.checkout_date, cr.expected_return_date,
+                   cr.sample_title, cr.sample_serial, cr.sample_type,
+                   cr.storage_location_code,
+                   i.Title as item_title,
+                   i.SerialNum as item_serial,
+                   i.SampleType as item_type,
+                   i.StorageLocationCode as item_location,
+                   i.Category, i.Model
+            FROM checkout_records cr
+            LEFT JOIN inventory i ON cr.sample_id = i.id
+            WHERE cr.checkout_status = 'OUT' AND ({identity_clause})
+        """
+        query_params = identity_params.copy()
+        sql, query_params = _build_query(sql_base, query_params, False)
+
+        conn = await aiosqlite.connect("sample_management.db")
+        conn.row_factory = aiosqlite.Row
+        cur = await conn.cursor()
+        await cur.execute(sql, query_params)
+        rows = await cur.fetchall()
+        await conn.close()
+        return _process_rows(rows, None)
+
+
+@app.get("/api/me/checkout-history")
+async def get_my_checkout_history(
+    request: Request,
+    search: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+):
+    """Get the authenticated user's returned/closed checkout history."""
+    user = await require_login(request)
+    conds, params = _get_borrower_identity_conditions(user)
+    use_pg = is_postgres()
+    identity_clause, identity_params = _identity_where_clause(conds, params, use_pg=use_pg)
+    database_url = _get_db_url()
+    ph = "%s" if use_pg else "?"
+
+    if use_pg:
+        def _query():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            where = f"cr.checkout_status = 'RETURNED' AND ({identity_clause})"
+            q_params = identity_params.copy()
+
+            if search:
+                where += f" AND (COALESCE(i.\"Title\", cr.sample_title) ILIKE {ph} OR COALESCE(i.\"SerialNum\", cr.sample_serial) ILIKE {ph})"
+                like = f"%{search}%"
+                q_params.extend([like, like])
+
+            cur.execute(f"""
+                SELECT COUNT(*) FROM checkout_records cr
+                LEFT JOIN inventory i ON cr.sample_id = i.id
+                WHERE {where}
+            """, q_params)
+            total = cur.fetchone()[0]
+
+            offset = (page - 1) * page_size
+            cur.execute(f"""
+                SELECT cr.id, cr.sample_id, cr.quantity,
+                       cr.checkout_date, cr.actual_return_date,
+                       COALESCE(i."Title", cr.sample_title) as sample_name,
+                       COALESCE(i."SerialNum", cr.sample_serial) as sample_code,
+                       cr.sample_type
+                FROM checkout_records cr
+                LEFT JOIN inventory i ON cr.sample_id = i.id
+                WHERE {where}
+                ORDER BY cr.actual_return_date DESC
+                LIMIT {ph} OFFSET {ph}
+            """, q_params + [page_size, offset])
+            rows = cur.fetchall()
+            col_names = [d[0] for d in cur.description]
+            items = [dict(zip(col_names, row)) for row in rows]
+            conn.close()
+            return {"items": items, "total": total, "page": page, "page_size": page_size}
+        return await _safe_pg_query(_query)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        conn.row_factory = aiosqlite.Row
+        cur = await conn.cursor()
+        where = f"cr.checkout_status = 'RETURNED' AND ({identity_clause})"
+        q_params = identity_params.copy()
+
+        if search:
+            where += f" AND (COALESCE(i.Title, cr.sample_title) LIKE {ph} OR COALESCE(i.SerialNum, cr.sample_serial) LIKE {ph})"
+            like = f"%{search}%"
+            q_params.extend([like, like])
+
+        await cur.execute(f"""
+            SELECT COUNT(*) FROM checkout_records cr
+            LEFT JOIN inventory i ON cr.sample_id = i.id
+            WHERE {where}
+        """, q_params)
+        total = (await cur.fetchone())[0]
+
+        offset = (page - 1) * page_size
+        await cur.execute(f"""
+            SELECT cr.id, cr.sample_id, cr.quantity,
+                   cr.checkout_date, cr.actual_return_date,
+                   COALESCE(i.Title, cr.sample_title) as sample_name,
+                   COALESCE(i.SerialNum, cr.sample_serial) as sample_code,
+                   cr.sample_type
+            FROM checkout_records cr
+            LEFT JOIN inventory i ON cr.sample_id = i.id
+            WHERE {where}
+            ORDER BY cr.actual_return_date DESC
+            LIMIT {ph} OFFSET {ph}
+        """, q_params + [page_size, offset])
+        rows = await cur.fetchall()
+        items = [dict(row) for row in rows]
+        await conn.close()
+        return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@app.get("/api/me/profile")
+async def get_my_profile(request: Request):
+    """Get the authenticated user's profile information."""
+    user = await require_login(request)
+    database_url = _get_db_url()
+
+    created_at = None
+    last_login = None
+    if is_postgres():
+        def _query():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT created_at, is_active FROM users WHERE id = %s", (user.id,))
+            row = cur.fetchone()
+            conn.close()
+            return row
+        row = await run_in_threadpool(_query)
+        if row:
+            created_at = row[0]
+            last_login = None  # not tracked
+            is_active = bool(row[1])
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT created_at, is_active FROM users WHERE id = ?", (user.id,))
+        row = await cur.fetchone()
+        await conn.close()
+        if row:
+            created_at = row[0]
+            is_active = bool(row[1])
+
+    return {
+        "username": user.username,
+        "email": user.email,
+        "role": "admin" if user.is_admin else "user",
+        "status": "active" if is_active else "inactive",
+        "created_at": str(created_at) if created_at else None,
+        "last_login": None,
+    }
+
+
+@app.post("/api/me/change-password")
+async def change_my_password(request: Request, payload: MePasswordChangeIn):
+    """Self-scoped password change — derives user from session."""
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    database_url = _get_db_url()
+
+    if is_postgres():
+        def _fetch():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute("SELECT password_hash, salt FROM users WHERE id = %s", (user.id,))
+            row = cur.fetchone()
+            conn.close()
+            return row
+        row = await run_in_threadpool(_fetch)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT password_hash, salt FROM users WHERE id = ?", (user.id,))
+        row = await cur.fetchone()
+        await conn.close()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    current_hash, current_salt = row
+
+    if not verify_password(payload.current_password, current_hash, current_salt):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+
+    if not payload.new_password or len(payload.new_password.strip()) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+
+    if payload.new_password == payload.current_password:
+        raise HTTPException(status_code=400, detail="New password must be different from current password")
+
+    new_hash, new_salt = hash_password(payload.new_password)
+
+    if is_postgres():
+        def _update():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE users SET password_hash = %s, salt = %s, must_change_password = FALSE WHERE id = %s",
+                (new_hash, new_salt, user.id),
+            )
+            conn.commit()
+            conn.close()
+        await run_in_threadpool(_update)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute(
+            "UPDATE users SET password_hash = ?, salt = ?, must_change_password = 0 WHERE id = ?",
+            (new_hash, new_salt, user.id),
+        )
+        await conn.commit()
+        await conn.close()
+
+    return {"status": "ok", "message": "Password changed successfully"}
+
+
 # ============================================================================
 # Item CRUD Routes
 # ============================================================================
@@ -1846,6 +2361,8 @@ async def create_checkout(request: Request, payload: CheckoutIn):
     borrower_name = user.display_name.strip() if user.display_name and user.display_name.strip() else user.username
     if not borrower_name:
         raise HTTPException(status_code=400, detail="Unable to determine borrower identity")
+    # Use authenticated user's email if form field is empty
+    borrower_email = payload.borrower_email.strip() if payload.borrower_email and payload.borrower_email.strip() else (user.email or "").strip()
     if payload.quantity < 1:
         raise HTTPException(status_code=400, detail="Invalid quantity")
     database_url = _get_db_url()
@@ -1873,7 +2390,7 @@ async def create_checkout(request: Request, payload: CheckoutIn):
                 INSERT INTO checkout_records (sample_id, quantity, borrower_name, borrower_department, borrower_email,
                     checkout_date, expected_return_date, checkout_remarks, checkout_status, sample_title, sample_serial, sample_type, storage_location_code, updated_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'OUT', %s, %s, %s, %s, CURRENT_TIMESTAMP)
-            """, (sample_id, payload.quantity, borrower_name, payload.borrower_department, payload.borrower_email, checkout_date,
+            """, (sample_id, payload.quantity, borrower_name, payload.borrower_department, borrower_email, checkout_date,
                   payload.expected_return_date, payload.checkout_remarks, title, serial, stype, storage_loc))
             cur.execute("UPDATE inventory SET available_quantity = available_quantity - %s WHERE id = %s", (payload.quantity, sample_id))
             conn.commit()
@@ -1910,8 +2427,8 @@ async def create_checkout(request: Request, payload: CheckoutIn):
 
 @app.put("/api/checkout/{record_id}/return")
 async def return_checkout(request: Request, record_id: int, payload: CheckoutReturnIn):
-    """Return a checked out sample with quantity."""
-    await require_login(request)
+    """Return a checked out sample with quantity. Ownership verified."""
+    user = await require_login(request)
     if payload.quantity < 1:
         raise HTTPException(status_code=400, detail="Invalid quantity")
     database_url = _get_db_url()
@@ -1920,15 +2437,21 @@ async def return_checkout(request: Request, record_id: int, payload: CheckoutRet
         def _return():
             conn = psycopg2.connect(database_url)
             cur = conn.cursor()
-            cur.execute("SELECT sample_id, quantity, checkout_status FROM checkout_records WHERE id = %s", (record_id,))
+            cur.execute("SELECT sample_id, quantity, checkout_status, borrower_name FROM checkout_records WHERE id = %s", (record_id,))
             row = cur.fetchone()
             if not row:
                 conn.close()
                 raise HTTPException(status_code=404, detail="Checkout record not found")
-            sample_id, record_quantity, checkout_status = row
+            sample_id, record_quantity, checkout_status, borrower_name = row
             if checkout_status != "OUT":
                 conn.close()
                 raise HTTPException(status_code=400, detail="Checkout record is not active")
+            # Ownership check
+            owner_names = {user.display_name.strip(), user.username.strip()}
+            owner_names.discard("")
+            if borrower_name not in owner_names:
+                conn.close()
+                raise HTTPException(status_code=403, detail="You can only return your own checked-out items")
             if payload.quantity < 1 or payload.quantity > record_quantity:
                 conn.close()
                 raise HTTPException(status_code=400, detail=f"Return quantity must be between 1 and {record_quantity}")
@@ -1957,15 +2480,21 @@ async def return_checkout(request: Request, record_id: int, payload: CheckoutRet
     else:
         conn = await aiosqlite.connect("sample_management.db")
         cur = await conn.cursor()
-        await cur.execute("SELECT sample_id, quantity, checkout_status FROM checkout_records WHERE id = ?", (record_id,))
+        await cur.execute("SELECT sample_id, quantity, checkout_status, borrower_name FROM checkout_records WHERE id = ?", (record_id,))
         row = await cur.fetchone()
         if not row:
             await conn.close()
             raise HTTPException(status_code=404, detail="Checkout record not found")
-        sample_id, record_quantity, checkout_status = row
+        sample_id, record_quantity, checkout_status, borrower_name = row
         if checkout_status != "OUT":
             await conn.close()
             raise HTTPException(status_code=400, detail="Checkout record is not active")
+        # Ownership check
+        owner_names = {user.display_name.strip(), user.username.strip()}
+        owner_names.discard("")
+        if borrower_name not in owner_names:
+            await conn.close()
+            raise HTTPException(status_code=403, detail="You can only return your own checked-out items")
         if payload.quantity < 1 or payload.quantity > record_quantity:
             await conn.close()
             raise HTTPException(status_code=400, detail=f"Return quantity must be between 1 and {record_quantity}")

@@ -75,7 +75,13 @@ const API = {
     userDetail: (id) => `${API_BASE}/users/${id}`,
     userUpdate: (id) => `${API_BASE}/users/${id}`,
     userResetPassword: (id) => `${API_BASE}/users/${id}/reset-password`,
-    userDelete: (id) => `${API_BASE}/users/${id}`
+    userDelete: (id) => `${API_BASE}/users/${id}`,
+    // My Samples / My Profile
+    mySummary: () => `${API_BASE}/me/sample-summary`,
+    myActiveCheckouts: () => `${API_BASE}/me/active-checkouts`,
+    myCheckoutHistory: () => `${API_BASE}/me/checkout-history`,
+    myProfile: () => `${API_BASE}/me/profile`,
+    myChangePassword: () => `${API_BASE}/me/change-password`
 };
 
 // ============================================================
@@ -107,7 +113,6 @@ function updateAuthUI() {
                 <strong>${escapeHtml(currentUser.display_name || currentUser.username)}</strong>
                 ${currentUser.is_admin ? '<span class="admin-badge">Admin</span>' : ''}
             </span>
-            <button class="edit" onclick="openChangePasswordModal()">Change Password</button>
             <button class="edit" onclick="logout()">Logout</button>
         `;
     } else {
@@ -120,6 +125,7 @@ function updateAuthUI() {
 
 function updateUIBasedOnRole() {
     const isAdmin = currentUser && currentUser.is_admin;
+    const isAuth = currentUser !== null;
     // Show/hide admin-only navigation tabs
     document.querySelectorAll('[data-admin-only]').forEach(el => {
         if (isAdmin) {
@@ -128,10 +134,29 @@ function updateUIBasedOnRole() {
             el.classList.remove('admin-visible');
         }
     });
+    // Show/hide auth-only navigation tabs
+    document.querySelectorAll('[data-auth-only]').forEach(el => {
+        if (isAuth) {
+            el.classList.add('auth-visible');
+        } else {
+            el.classList.remove('auth-visible');
+        }
+    });
     // If on Dashboard section and user is not admin, switch to Samples
     const dashboardSection = document.getElementById('dashboard-section');
     if (!isAdmin && !dashboardSection.classList.contains('hidden')) {
         showSection('samples');
+    }
+    // If on My Samples or My Profile and user is not authenticated, switch to Samples
+    const mySamplesSection = document.getElementById('my-samples-page');
+    const myProfileSection = document.getElementById('my-profile-page');
+    if (!isAuth) {
+        if (mySamplesSection && !mySamplesSection.classList.contains('hidden')) {
+            showSection('samples');
+        }
+        if (myProfileSection && !myProfileSection.classList.contains('hidden')) {
+            showSection('samples');
+        }
     }
 }
 
@@ -158,11 +183,6 @@ function openLoginModal() {
     document.getElementById('loginUsername').value = '';
     document.getElementById('loginPassword').value = '';
     openModal('loginModal');
-    // Show admin contact email from preloaded value
-    const emailSpan = document.getElementById('adminContactEmail');
-    if (emailSpan) {
-        emailSpan.textContent = _adminContactEmail || '';
-    }
 }
 
 async function submitLogin(e) {
@@ -193,7 +213,7 @@ async function submitLogin(e) {
         if (currentUser && currentUser.is_admin) {
             showSection('dashboard');
         } else {
-            showSection('samples');
+            showSection('my-samples');
         }
         showToast('Logged in successfully', 'success');
     } catch (err) {
@@ -326,7 +346,7 @@ async function submitChangePassword(e) {
         await loadCurrentUser();
         if (currentUser && currentUser.must_change_password === false) {
             if (currentUser.is_admin) showSection('dashboard');
-            else showSection('samples');
+            else showSection('my-samples');
         }
         document.getElementById('changePasswordOld').value = '';
         document.getElementById('changePasswordNew').value = '';
@@ -1619,6 +1639,321 @@ async function viewItem(id) {
 }
 
 // ============================================================
+// My Samples / My Profile
+// ============================================================
+
+var _mySamplesFilter = 'all';
+var _mySamplesHistoryPage = 1;
+var _myReturnCheckoutId = null;
+var _myReturnMaxQty = 1;
+
+function loadMySamples() {
+    if (!currentUser) return;
+    loadMySummary();
+    loadMyActiveCheckouts();
+    loadMyHistory();
+}
+
+async function loadMySummary() {
+    try {
+        var res = await fetch(API.mySummary());
+        if (!res.ok) throw new Error('Failed to load summary');
+        var data = await res.json();
+        document.getElementById('summary-count-checked-out').textContent = data.currently_checked_out || 0;
+        document.getElementById('summary-count-overdue').textContent = data.overdue || 0;
+        document.getElementById('summary-count-due-soon').textContent = data.due_soon || 0;
+        document.getElementById('summary-count-returned-this-month').textContent = data.returned_this_month || 0;
+    } catch (err) {
+        console.error('Summary load error:', err);
+    }
+}
+
+async function loadMyActiveCheckouts() {
+    var loading = document.getElementById('active-loading');
+    if (loading) loading.style.display = '';
+    var search = document.getElementById('my-samples-search').value;
+    var filter = _mySamplesFilter === 'history' ? 'all' : _mySamplesFilter;
+    var url = API.myActiveCheckouts() + '?filter=' + encodeURIComponent(filter);
+    if (search) url += '&search=' + encodeURIComponent(search);
+
+    try {
+        var res = await fetch(url);
+        if (!res.ok) throw new Error('Failed to load active checkouts');
+        var items = await res.json();
+
+        var cardsContainer = document.getElementById('active-checkouts-cards');
+        var tableBody = document.getElementById('active-checkouts-table-body');
+        var emptyState = document.getElementById('active-checkouts-empty');
+
+        if (loading) loading.style.display = 'none';
+
+        if (!items || items.length === 0) {
+            cardsContainer.innerHTML = '';
+            tableBody.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            var tableContainer = document.getElementById('active-checkouts-table-container');
+            if (tableContainer) tableContainer.style.display = 'none';
+            return;
+        }
+
+        emptyState.classList.add('hidden');
+        var activeTableContainer = document.getElementById('active-checkouts-table-container');
+        if (activeTableContainer) activeTableContainer.style.display = '';
+
+        // Mobile cards
+        cardsContainer.innerHTML = items.map(function(item) {
+            var statusLabel = item.status.charAt(0).toUpperCase() + item.status.slice(1).replace('_', ' ');
+            var statusClass = 'status-' + item.status;
+            var dueDisplay = item.due_date || '\u2014';
+            return '\n<div class="sample-mobile-card">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n    <span class="my-samples-status-badge ' + statusClass + '">' + statusLabel + '</span>\n  </div>\n  <div class="sample-mobile-card__meta">' +
+                (item.sample_code ? escapeHtml(item.sample_code) : '') +
+                (item.sample_code && item.sample_type ? '<span class="sample-mobile-card__meta-sep">\u00B7</span>' : '') +
+                (item.sample_type ? escapeHtml(item.sample_type) : '') +
+                (item.category ? '<span class="sample-mobile-card__meta-sep">\u00B7</span>' + escapeHtml(item.category) : '') +
+            '</div>\n  <div class="sample-mobile-card__dates">' +
+                '<strong>Qty:</strong> ' + item.quantity +
+                ' | <strong>Checkout:</strong> ' + escapeHtml(item.checkout_date || '') +
+                ' | <strong>Due:</strong> ' + dueDisplay +
+            '</div>\n  <div class="sample-mobile-card__actions">\n    <button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button>\n    <button class="btn-primary" onclick="openMyReturn(' + item.checkout_id + ',' + item.quantity + ')">Return</button>\n  </div>\n</div>';
+        }).join('');
+
+        // Desktop table
+        tableBody.innerHTML = items.map(function(item) {
+            var statusLabel = item.status.charAt(0).toUpperCase() + item.status.slice(1).replace('_', ' ');
+            var statusClass = 'status-' + item.status;
+            var dueDisplay = item.due_date || '\u2014';
+            return '\n<tr>\n  <td><div class="sample-name-cell">' + escapeHtml(item.sample_name || '') + '</div>' +
+                (item.sample_code ? '<div class="sample-code-cell">' + escapeHtml(item.sample_code) + '</div>' : '') +
+            '</td>\n  <td>' + escapeHtml(item.category || item.sample_type || '') + '</td>\n  <td>' + item.quantity + '</td>\n  <td>' + escapeHtml(item.checkout_date || '') + '</td>\n  <td>' + dueDisplay + '</td>\n  <td><span class="my-samples-status-badge ' + statusClass + '">' + statusLabel + '</span></td>\n  <td class="actions-cell">\n    <button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button>\n    <button class="btn-primary" onclick="openMyReturn(' + item.checkout_id + ',' + item.quantity + ')">Return</button>\n  </td>\n</tr>';
+        }).join('');
+    } catch (err) {
+        console.error('Active checkouts load error:', err);
+        var loadingEl = document.getElementById('active-loading');
+        if (loadingEl) loadingEl.style.display = 'none';
+        document.getElementById('active-checkouts-cards').innerHTML = '<div class="empty-state-card"><p style="color:#D92D20;">Error loading checkouts. Please try again.</p></div>';
+    }
+}
+
+async function loadMyHistory() {
+    var histLoading = document.getElementById('history-loading');
+    if (histLoading) histLoading.style.display = '';
+    var search = document.getElementById('my-samples-search').value;
+    _mySamplesHistoryPage = 1;
+    var url = API.myCheckoutHistory() + '?page=1&page_size=20';
+    if (search) url += '&search=' + encodeURIComponent(search);
+
+    try {
+        var res = await fetch(url);
+        if (!res.ok) throw new Error('Failed to load history');
+        var data = await res.json();
+
+        var cardsContainer = document.getElementById('history-cards');
+        var tableBody = document.getElementById('history-table-body');
+        var emptyState = document.getElementById('history-empty');
+        var pagination = document.getElementById('history-pagination');
+
+        if (histLoading) histLoading.style.display = 'none';
+
+        if (!data.items || data.items.length === 0) {
+            cardsContainer.innerHTML = '';
+            tableBody.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            pagination.classList.add('hidden');
+            return;
+        }
+
+        emptyState.classList.add('hidden');
+
+        // Mobile cards
+        cardsContainer.innerHTML = data.items.map(function(item) {
+            return '\n<div class="sample-mobile-card">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n  </div>\n  <div class="sample-mobile-card__meta">' +
+                (item.sample_code ? escapeHtml(item.sample_code) : '') +
+            '</div>\n  <div class="sample-mobile-card__dates">' +
+                '<strong>Qty:</strong> ' + (item.quantity || 1) +
+                ' | <strong>Checkout:</strong> ' + escapeHtml(item.checkout_date || '') +
+                ' | <strong>Returned:</strong> ' + escapeHtml(item.actual_return_date || '') +
+            '</div>\n  <div class="sample-mobile-card__actions">\n    <button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button>\n  </div>\n</div>';
+        }).join('');
+
+        // Desktop table
+        tableBody.innerHTML = data.items.map(function(item) {
+            return '\n<tr>\n  <td><div class="sample-name-cell">' + escapeHtml(item.sample_name || '') + '</div>' +
+                (item.sample_code ? '<div class="sample-code-cell">' + escapeHtml(item.sample_code) + '</div>' : '') +
+            '</td>\n  <td>' + (item.quantity || 1) + '</td>\n  <td>' + escapeHtml(item.checkout_date || '') + '</td>\n  <td>' + escapeHtml(item.actual_return_date || '') + '</td>\n  <td class="actions-cell"><button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button></td>\n</tr>';
+        }).join('');
+
+        // Pagination
+        if (data.total > data.page * data.page_size) {
+            pagination.classList.remove('hidden');
+        } else {
+            pagination.classList.add('hidden');
+        }
+    } catch (err) {
+        console.error('History load error:', err);
+        document.getElementById('history-cards').innerHTML = '<div class="empty-state-card"><p style="color:#D92D20;">Error loading history.</p></div>';
+        var histLoadErr = document.getElementById('history-loading');
+        if (histLoadErr) histLoadErr.style.display = 'none';
+    }
+}
+
+function loadMoreHistory() {
+    _mySamplesHistoryPage++;
+    var search = document.getElementById('my-samples-search').value;
+    var url = API.myCheckoutHistory() + '?page=' + _mySamplesHistoryPage + '&page_size=20';
+    if (search) url += '&search=' + encodeURIComponent(search);
+
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.items || data.items.length === 0) return;
+            var tableBody = document.getElementById('history-table-body');
+            var cardsContainer = document.getElementById('history-cards');
+            var pagination = document.getElementById('history-pagination');
+
+            data.items.forEach(function(item) {
+                // Desktop row
+                var row = '\n<tr>\n  <td><div class="sample-name-cell">' + escapeHtml(item.sample_name || '') + '</div>' +
+                    (item.sample_code ? '<div class="sample-code-cell">' + escapeHtml(item.sample_code) + '</div>' : '') +
+                '</td>\n  <td>' + (item.quantity || 1) + '</td>\n  <td>' + escapeHtml(item.checkout_date || '') + '</td>\n  <td>' + escapeHtml(item.actual_return_date || '') + '</td>\n  <td class="actions-cell"><button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button></td>\n</tr>';
+                tableBody.insertAdjacentHTML('beforeend', row);
+
+                // Mobile card
+                var card = '\n<div class="sample-mobile-card">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n  </div>\n  <div class="sample-mobile-card__meta">' +
+                    (item.sample_code ? escapeHtml(item.sample_code) : '') +
+                '</div>\n  <div class="sample-mobile-card__dates">' +
+                    '<strong>Qty:</strong> ' + (item.quantity || 1) +
+                    ' | <strong>Checkout:</strong> ' + escapeHtml(item.checkout_date || '') +
+                    ' | <strong>Returned:</strong> ' + escapeHtml(item.actual_return_date || '') +
+                '</div>\n  <div class="sample-mobile-card__actions">\n    <button class="btn-secondary" onclick="viewMySample(' + item.sample_id + ')">View</button>\n  </div>\n</div>';
+                cardsContainer.insertAdjacentHTML('beforeend', card);
+            });
+
+            if (data.total > data.page * data.page_size) {
+                pagination.classList.remove('hidden');
+            } else {
+                pagination.classList.add('hidden');
+            }
+        })
+        .catch(function(err) {
+            console.error('Load more history error:', err);
+        });
+}
+
+function setMySamplesFilter(filter) {
+    _mySamplesFilter = filter;
+    document.querySelectorAll('#my-samples-filter-bar .filter-chip').forEach(function(chip) {
+        chip.classList.remove('active');
+    });
+    document.querySelectorAll('#my-samples-filter-bar .filter-chip').forEach(function(chip) {
+        if (chip.getAttribute('data-filter') === filter) {
+            chip.classList.add('active');
+        }
+    });
+
+    var activeSection = document.getElementById('my-samples-active-section');
+    var historySection = document.getElementById('my-samples-history-section');
+
+    if (filter === 'history') {
+        if (activeSection) activeSection.style.display = 'none';
+        if (historySection) historySection.style.display = '';
+    } else {
+        if (activeSection) activeSection.style.display = '';
+        if (historySection) historySection.style.display = '';
+        loadMyActiveCheckouts();
+    }
+}
+
+function viewMySample(sampleId) {
+    // Reuse existing detail view in a simpler way - navigate to samples detail
+    closeModal();
+    showSection('samples');
+    // Open detail modal after a short delay
+    setTimeout(function() {
+        viewItem(sampleId);
+    }, 200);
+}
+
+function openMyReturn(checkoutId, maxQty) {
+    _myReturnCheckoutId = checkoutId;
+    _myReturnMaxQty = maxQty;
+    document.getElementById('myReturnQuantityGroup').style.display = maxQty > 1 ? '' : 'none';
+    var qtyInput = document.getElementById('myReturnQuantity');
+    qtyInput.value = maxQty;
+    qtyInput.min = 1;
+    qtyInput.max = maxQty;
+    document.getElementById('myReturnModalBody').textContent = 'Confirm return for this checked-out sample.' + (maxQty > 1 ? ' (Max: ' + maxQty + ')' : '');
+    document.getElementById('myReturnError').style.display = 'none';
+    document.getElementById('myReturnConfirmBtn').disabled = false;
+    document.getElementById('myReturnConfirmBtn').textContent = 'Confirm Return';
+    openModal('myReturnModal');
+}
+
+async function confirmMyReturn() {
+    if (!_myReturnCheckoutId) return;
+
+    var qty = parseInt(document.getElementById('myReturnQuantity').value) || 1;
+    if (qty < 1 || qty > _myReturnMaxQty) {
+        document.getElementById('myReturnError').textContent = 'Quantity must be between 1 and ' + _myReturnMaxQty;
+        document.getElementById('myReturnError').style.display = 'block';
+        return;
+    }
+
+    var today = new Date().toISOString().split('T')[0];
+    var btn = document.getElementById('myReturnConfirmBtn');
+    btn.disabled = true;
+    btn.textContent = 'Returning...';
+
+    try {
+        var res = await fetch(API.checkoutReturn(_myReturnCheckoutId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ quantity: qty, actual_return_date: today, return_remarks: '' })
+        });
+
+        if (!res.ok) {
+            var err = await res.json();
+            throw new Error(err.detail || 'Return failed');
+        }
+
+        closeModal();
+        showToast('Returned successfully', 'success');
+        _myReturnCheckoutId = null;
+        loadMySamples();
+    } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm Return';
+        document.getElementById('myReturnError').textContent = err.message;
+        document.getElementById('myReturnError').style.display = 'block';
+    }
+}
+
+// ============================================================
+// My Profile
+// ============================================================
+
+async function loadMyProfile() {
+    if (!currentUser) return;
+    try {
+        var res = await fetch(API.myProfile());
+        if (!res.ok) throw new Error('Failed to load profile');
+        var data = await res.json();
+
+        document.getElementById('profile-username').textContent = data.username || '-';
+        document.getElementById('profile-email').textContent = data.email || '-';
+        var roleLabel = data.role === 'admin' ? 'System Administrator' : 'Regular User';
+        document.getElementById('profile-role').textContent = roleLabel;
+        var statusLabel = data.status === 'active' ? 'Active' : 'Inactive';
+        document.getElementById('profile-status').textContent = statusLabel;
+    } catch (err) {
+        console.error('Profile load error:', err);
+    }
+}
+
+
+
+
+
+// ============================================================
 // Dashboard Functions
 // ============================================================
 
@@ -1818,22 +2153,35 @@ function showSection(section) {
         alert(label + ' access is restricted to administrators.');
         return;
     }
+    if ((section === 'my-samples' || section === 'my-profile') && !currentUser) {
+        alert('Please log in to access your personal area.');
+        return;
+    }
     closeMenu();
     document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.section').forEach(sec => sec.classList.add('hidden'));
     
+    // Activate the matching tab using data-section attribute
+    var activeTab = document.querySelector('.nav-tab[data-section="' + section + '"]');
+    if (activeTab) {
+        activeTab.classList.add('active');
+    }
+
     if (section === 'samples') {
-        document.querySelectorAll('.nav-tab')[0].classList.add('active');
         document.getElementById('samples-section').classList.remove('hidden');
         loadItems();
     } else if (section === 'dashboard') {
-        document.querySelectorAll('.nav-tab')[1].classList.add('active');
         document.getElementById('dashboard-section').classList.remove('hidden');
         loadDashboard();
     } else if (section === 'users') {
-        document.querySelectorAll('.nav-tab')[2].classList.add('active');
         document.getElementById('users-section').classList.remove('hidden');
         loadUsers();
+    } else if (section === 'my-samples') {
+        document.getElementById('my-samples-page').classList.remove('hidden');
+        loadMySamples();
+    } else if (section === 'my-profile') {
+        document.getElementById('my-profile-page').classList.remove('hidden');
+        loadMyProfile();
     }
 }
 
