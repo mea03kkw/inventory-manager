@@ -126,6 +126,8 @@ function updateAuthUI() {
 function updateUIBasedOnRole() {
     const isAdmin = currentUser && currentUser.is_admin;
     const isAuth = currentUser !== null;
+    // Toggle admin background indicator on body
+    document.body.classList.toggle('admin-mode', isAdmin);
     // Show/hide admin-only navigation tabs
     document.querySelectorAll('[data-admin-only]').forEach(el => {
         if (isAdmin) {
@@ -142,6 +144,8 @@ function updateUIBasedOnRole() {
             el.classList.remove('auth-visible');
         }
     });
+    // Apply admin-only button visibility
+    applyAdminOnlyVisibility(currentUser);
     // If on Dashboard section and user is not admin, switch to Samples
     const dashboardSection = document.getElementById('dashboard-section');
     if (!isAdmin && !dashboardSection.classList.contains('hidden')) {
@@ -158,6 +162,14 @@ function updateUIBasedOnRole() {
             showSection('samples');
         }
     }
+}
+
+function applyAdminOnlyVisibility(currentUser) {
+    var addWrap = document.getElementById('admin-add-sample-wrap');
+    var exportWrap = document.getElementById('admin-export-csv-wrap');
+    var isAdmin = !!currentUser && currentUser.is_admin === true;
+    if (addWrap) addWrap.hidden = !isAdmin;
+    if (exportWrap) exportWrap.hidden = !isAdmin;
 }
 
 async function loadCurrentUser() {

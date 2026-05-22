@@ -2676,3 +2676,31 @@ button.action-copy-btn:hover {
         justify-content: flex-start;
     }
 }
+
+/* Admin mode indicator */
+body.admin-mode {
+  border-top: none;
+  background: #EAF3FB;
+}
+
+body.admin-mode .header,
+body.admin-mode .filters-bar,
+body.admin-mode .table-container,
+body.admin-mode .card,
+body.admin-mode .my-samples-section,
+body.admin-mode .summary-card,
+body.admin-mode .sample-mobile-card,
+body.admin-mode .inventory-card,
+body.admin-mode .users-card,
+body.admin-mode .modal-content {
+  background: #FFFFFF;
+}
+
+body.admin-mode .header {
+  background: #F7FBFF;
+  border: 1px solid #C9E0F5;
+}
+
+[hidden] {
+    display: none !important;
+}
