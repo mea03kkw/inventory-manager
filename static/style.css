@@ -2677,6 +2677,92 @@ button.action-copy-btn:hover {
     }
 }
 
+/* ============================================================
+Mobile admin action row — final grid fix
+============================================================ */
+#mobile-admin-action-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#mobile-admin-action-row[hidden] {
+  display: none !important;
+}
+
+@media screen and (max-width: 768px) {
+  #samples-section .filters-bar {
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 16px;
+  }
+
+  #samples-section .filters-bar > #searchBox {
+    width: 100%;
+    flex: 0 0 100%;
+  }
+
+  #samples-section .filters-bar > #statusFilter,
+  #samples-section .filters-bar > #rackFilter {
+    width: 100%;
+    flex: 0 0 100%;
+  }
+
+  #samples-section .filters-bar > #mobile-admin-action-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+    margin: 0;
+  }
+
+  #samples-section .filters-bar > #mobile-admin-action-row[hidden] {
+    display: none !important;
+  }
+
+  #samples-section #mobile-admin-action-row > #admin-add-sample-wrap,
+  #samples-section #mobile-admin-action-row > #admin-export-csv-wrap {
+    width: 100%;
+    margin: 0;
+  }
+
+  #samples-section #mobile-admin-action-row > #admin-add-sample-wrap .add-button,
+  #samples-section #mobile-admin-action-row > #admin-export-csv-wrap .export-csv-btn {
+    width: 100%;
+    height: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 14px;
+    border-radius: 10px;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  #samples-section .filters-bar {
+    gap: 8px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+
+  #samples-section .filters-bar > #mobile-admin-action-row {
+    gap: 8px;
+  }
+
+  #samples-section #mobile-admin-action-row > #admin-add-sample-wrap .add-button,
+  #samples-section #mobile-admin-action-row > #admin-export-csv-wrap .export-csv-btn {
+    height: 42px;
+    min-height: 42px;
+    padding: 0 10px;
+    font-size: 13px;
+    border-radius: 10px;
+  }
+}
+
 /* Admin mode indicator */
 body.admin-mode {
   border-top: none;

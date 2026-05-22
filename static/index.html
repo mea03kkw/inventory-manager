@@ -115,8 +115,10 @@
             <select id="rackFilter" onchange="applyFilters()">
                 <option value="">All Racks</option>
             </select>
-            <div id="admin-add-sample-wrap" hidden><button class="add-button" onclick="showAddForm()">+ Add Sample</button></div>
-            <div id="admin-export-csv-wrap" hidden><button class="export-csv-btn" onclick="exportSamplesCsv()">Export CSV</button></div>
+            <div id="mobile-admin-action-row" hidden>
+              <div id="admin-add-sample-wrap" hidden><button class="add-button" onclick="showAddForm()">+ Add Sample</button></div>
+              <div id="admin-export-csv-wrap" hidden><button class="export-csv-btn" onclick="exportSamplesCsv()">Export CSV</button></div>
+            </div>
         </div>
 
         <div id="inventoryCards" class="inventory-cards"></div>

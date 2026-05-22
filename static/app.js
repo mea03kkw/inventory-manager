@@ -165,9 +165,11 @@ function updateUIBasedOnRole() {
 }
 
 function applyAdminOnlyVisibility(currentUser) {
+    var mobileAdminRow = document.getElementById('mobile-admin-action-row');
     var addWrap = document.getElementById('admin-add-sample-wrap');
     var exportWrap = document.getElementById('admin-export-csv-wrap');
     var isAdmin = !!currentUser && currentUser.is_admin === true;
+    if (mobileAdminRow) mobileAdminRow.hidden = !isAdmin;
     if (addWrap) addWrap.hidden = !isAdmin;
     if (exportWrap) exportWrap.hidden = !isAdmin;
 }
