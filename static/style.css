@@ -865,8 +865,19 @@ button.view-btn:hover {
 }
 
 .modal-content.detail-modal {
-    max-width: 1280px;
-    width: calc(100vw - 40px);
+    width: min(920px, calc(100vw - 48px));
+    max-width: 920px;
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-content.detail-modal .modal-header {
+    padding: 16px 22px;
+}
+
+.modal-content.detail-modal .modal-header h3 {
+    font-size: 17px;
 }
 
 .modal-header {
@@ -905,11 +916,245 @@ button.view-btn:hover {
     color: #333;
 }
 
+/* ============================================================
+   Checkout & Return Modals — Compact Transaction Layout
+   ============================================================ */
+
+/* Desktop sizing & viewport-fit */
+#checkoutModal .modal-content,
+#returnModal .modal-content {
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+}
+
+#checkoutModal .modal-content {
+    width: min(780px, calc(100vw - 48px));
+    max-width: 780px;
+}
+
+#returnModal .modal-content {
+    width: min(740px, calc(100vw - 48px));
+    max-width: 740px;
+}
+
+/* Header tightening */
+#checkoutModal .modal-header,
+#returnModal .modal-header {
+    padding: 16px 22px;
+}
+
+#checkoutModal .modal-header h3,
+#returnModal .modal-header h3 {
+    font-size: 17px;
+}
+
+/* Top info areas */
 #checkoutSampleInfo,
-#returnSampleInfo,
-#sampleDetailContent {
-    padding: 20px 25px;
+#returnSampleInfo {
+    padding: 14px 20px 10px;
+    min-height: 0;
+}
+
+/* Scroll body */
+#checkoutModal .transaction-modal-body,
+#returnModal .transaction-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     overflow-x: hidden;
+}
+
+#checkoutModal .sample-info-box,
+#returnModal .sample-info-box {
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+}
+
+#checkoutModal .sample-info-box p,
+#returnModal .sample-info-box p {
+    margin: 4px 0;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+/* Checkout stock display & borrower */
+#checkoutStockDisplay {
+    padding: 0 20px;
+    margin-bottom: 6px;
+}
+
+#checkoutStockDisplay > div {
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+}
+
+#checkoutBorrowerDisplay {
+    padding: 0 20px;
+    margin-bottom: 6px;
+}
+
+#checkoutBorrowerName {
+    padding: 10px 12px;
+    font-size: 14px;
+    border-radius: 8px;
+}
+
+/* Compact form spacing */
+#checkoutModal form .form-grid,
+#returnModal form .form-grid {
+    gap: 10px 14px;
+    margin-bottom: 10px;
+    padding: 0 20px;
+}
+
+#checkoutModal form .form-group label,
+#returnModal form .form-group label {
+    margin-bottom: 4px;
+    font-size: 12px;
+}
+
+#checkoutModal form .form-group input,
+#checkoutModal form .form-group select,
+#checkoutModal form .form-group textarea,
+#returnModal form .form-group input,
+#returnModal form .form-group select,
+#returnModal form .form-group textarea {
+    padding: 10px 12px;
+    font-size: 14px;
+}
+
+/* Smaller textareas */
+#checkoutModal textarea,
+#returnModal textarea {
+    min-height: 60px;
+    line-height: 1.4;
+}
+
+/* Tighten footer actions */
+#checkoutModal .form-actions,
+#returnModal .form-actions {
+    gap: 10px;
+    padding: 12px 20px 16px;
+    border-top: 1px solid #f0f0f0;
+    margin-top: 0;
+}
+
+#checkoutModal .form-actions button,
+#returnModal .form-actions button {
+    min-height: 40px;
+    padding: 0 18px;
+    font-size: 14px;
+    border-radius: 10px;
+}
+
+/* ============================================================
+   Checkout & Return — Mobile
+   ============================================================ */
+@media (max-width: 768px) {
+  #checkoutModal .modal-content,
+  #returnModal .modal-content {
+    width: calc(100vw - 16px);
+    max-width: none;
+    max-height: calc(100vh - 16px);
+    margin-top: 8px;
+    border-radius: 10px;
+  }
+
+  #checkoutModal .modal-header,
+  #returnModal .modal-header {
+    padding: 12px 14px;
+  }
+
+  #checkoutModal .modal-header h3,
+  #returnModal .modal-header h3 {
+    font-size: 15px;
+  }
+
+  #checkoutModal .sample-info-box,
+  #returnModal .sample-info-box {
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+
+  #checkoutModal .sample-info-box p,
+  #returnModal .sample-info-box p {
+    margin: 3px 0;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  #checkoutModal form .form-grid,
+  #returnModal form .form-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 0 14px;
+  }
+
+  #checkoutModal form .form-group label,
+  #returnModal form .form-group label {
+    margin-bottom: 3px;
+    font-size: 11px;
+  }
+
+  #checkoutModal form .form-group input,
+  #checkoutModal form .form-group textarea,
+  #checkoutModal form .form-group select,
+  #returnModal form .form-group input,
+  #returnModal form .form-group textarea,
+  #returnModal form .form-group select {
+    padding: 9px 12px;
+    font-size: 14px;
+  }
+
+  #checkoutStockDisplay,
+  #checkoutBorrowerDisplay {
+    padding-left: 14px;
+    padding-right: 14px;
+    margin-bottom: 8px;
+  }
+
+  #checkoutBorrowerName {
+    padding: 9px 12px;
+    font-size: 14px;
+  }
+
+  #checkoutStockDisplay > div {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  #checkoutModal textarea,
+  #returnModal textarea {
+    min-height: 56px;
+  }
+
+  #checkoutModal .form-actions,
+  #returnModal .form-actions {
+    gap: 8px;
+    padding: 12px 14px 14px;
+  }
+
+  #checkoutModal .form-actions button,
+  #returnModal .form-actions button {
+    min-height: 44px;
+    width: 100%;
+    margin-right: 0;
+  }
+}
+
+#sampleDetailContent {
+    padding: 16px 22px;
+    overflow-x: hidden;
+}
+
+#sampleDetailContent {
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .sample-info-box {
@@ -932,54 +1177,72 @@ button.view-btn:hover {
     display: inline-block;
 }
 
-/* Detail Page Sections */
-#sampleDetailContent .detail-row {
+/* Compact Details Grid */
+.sample-details-compact-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 18px;
-    margin-bottom: 0;
-    padding: 14px 0;
-    border-bottom: 1px solid #f0f0f0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 20px;
+    align-items: start;
 }
 
-#sampleDetailContent .detail-row:last-of-type {
-    border-bottom: none;
+.detail-item {
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    align-items: start;
+    column-gap: 10px;
+    row-gap: 0;
+    padding: 5px 0;
+    border-bottom: 1px solid #e8edf3;
+    min-width: 0;
+}
+
+.detail-item-full {
+    grid-column: 1 / -1;
 }
 
 #sampleDetailContent .detail-label {
-    font-weight: 600;
-    color: #888;
     font-size: 12px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
+    letter-spacing: 0.02em;
+    color: #7a8594;
+    line-height: 1.4;
+    padding-top: 2px;
+    white-space: nowrap;
 }
 
 #sampleDetailContent .detail-value {
-    color: #333;
-    font-size: 15px;
-    padding: 6px 12px;
-    background: #fafafa;
-    border-radius: 6px;
-    min-height: 38px;
-    display: flex;
-    align-items: center;
+    font-size: 14px;
+    font-weight: 500;
+    color: #253041;
+    line-height: 1.45;
+    min-width: 0;
+    word-break: break-word;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.detail-value-multiline {
+    white-space: pre-wrap;
 }
 
 /* Detail Action Buttons */
 .detail-actions {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    margin-top: 15px;
-    padding-top: 20px;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 14px;
     border-top: 1px solid #f0f0f0;
 }
 
 .detail-actions button {
-    min-height: 44px;
-    max-height: 52px;
-    padding: 8px 16px;
+    min-height: 40px;
+    max-height: 44px;
+    padding: 6px 14px;
     font-size: 14px;
     font-weight: 600;
     width: 100%;
@@ -1006,15 +1269,15 @@ button.view-btn:hover {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 14px;
+    padding: 10px 12px;
     background: #f8f9fa;
     color: #333;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
     font-size: 14px;
     font-weight: 600;
-    margin-top: 12px;
-    margin-bottom: 10px;
+    margin-top: 10px;
+    margin-bottom: 8px;
 }
 
 .history-toggle:hover {
@@ -1266,23 +1529,13 @@ button.view-btn:hover {
     }
 
     /* Modal detail grid — single column on mobile */
-    #sampleDetailContent .detail-row {
+    .sample-details-compact-grid {
         grid-template-columns: 1fr;
-        gap: 10px;
-        padding: 12px 0;
+        gap: 8px;
     }
 
-    #sampleDetailContent .detail-value {
-        width: 100%;
-        min-width: 0;
-        min-width: 0;
-        overflow-wrap: anywhere;
-        word-break: break-word;
-        white-space: normal;
-    }
-
-    #sampleDetailContent .detail-row > div {
-        min-width: 0;
+    .detail-item {
+        grid-template-columns: 110px minmax(0, 1fr);
     }
 
   .modal {
@@ -1312,24 +1565,21 @@ button.view-btn:hover {
     font-size: 16px;
   }
 
-  #checkoutSampleInfo,
-  #returnSampleInfo,
   #sampleDetailContent {
     padding: 12px 16px;
   }
 
-  #sampleDetailContent .detail-row {
-    gap: 6px;
-    padding: 8px 0;
+  .detail-item {
+    padding: 5px 0;
+    column-gap: 8px;
   }
 
   #sampleDetailContent .detail-label {
-    margin-bottom: 2px;
+    font-size: 11px;
   }
 
   #sampleDetailContent .detail-value {
-    padding: 4px 10px;
-    min-height: 30px;
+    font-size: 13px;
   }
 
   .history-toggle {
@@ -1376,32 +1626,26 @@ button.view-btn:hover {
     font-size: 15px;
   }
 
-  #checkoutSampleInfo,
-  #returnSampleInfo,
   #sampleDetailContent {
     padding: 10px 14px;
   }
 
-  #sampleDetailContent .detail-row {
-    grid-template-columns: 1fr;
-    gap: 4px;
-    padding: 8px 0;
+  .sample-details-compact-grid {
+    gap: 6px;
+  }
+
+  .detail-item {
+    grid-template-columns: 100px minmax(0, 1fr);
+    padding: 4px 0;
+    column-gap: 8px;
   }
 
   #sampleDetailContent .detail-label {
     font-size: 11px;
-    margin-bottom: 2px;
   }
 
   #sampleDetailContent .detail-value {
-    font-size: 14px;
-    padding: 4px 10px;
-    min-height: 28px;
-  }
-
-  .detail-stock-value {
-    flex-wrap: wrap;
-    row-gap: 4px;
+    font-size: 13px;
   }
 
   .detail-actions {
@@ -1446,18 +1690,30 @@ button.view-btn:hover {
 }
 
 /* ============================================================
+   Responsive — 900px Compact Grid Collapse
+   ============================================================ */
+@media (max-width: 900px) {
+  .sample-details-compact-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .detail-item {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+
+  #sampleDetailContent .detail-label {
+    white-space: normal;
+  }
+}
+
+/* ============================================================
    Responsive — Medium / Tablet: 768px to 1199px
    ============================================================ */
 @media screen and (min-width: 768px) and (max-width: 1199px) {
   .modal-content.detail-modal {
-    width: calc(100vw - 20px);
-    max-width: none;
-  }
-
-  #sampleDetailContent .detail-row {
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    padding: 12px 0;
+    width: min(920px, calc(100vw - 48px));
+    max-width: 920px;
   }
 
   .detail-actions {
@@ -1478,17 +1734,6 @@ button.view-btn:hover {
    Responsive — Desktop / Large: >= 1200px
    ============================================================ */
 @media screen and (min-width: 1200px) {
-  .modal-content.detail-modal {
-    width: 90vw;
-    max-width: 1280px;
-  }
-
-  #sampleDetailContent .detail-row {
-    grid-template-columns: 1fr 1fr;
-    gap: 18px;
-    padding: 14px 0;
-  }
-
   .detail-actions {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;

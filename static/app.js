@@ -1526,37 +1526,6 @@ async function viewItem(id) {
         var stockStatusClass = getDisplayStatusClass(item);
         var stockStatusText = getDisplayStatusText(item);
 
-        var statusRowHtml = '';
-        var stockRowHtml = '';
-
-        if (isExceptionalStatus) {
-            statusRowHtml = `
-                <div class="detail-row">
-                    <div>
-                        <div class="detail-label">Status</div>
-                        <div class="detail-value"><span class="status-badge ${stockStatusClass}">${stockStatusText}</span></div>
-                    </div>
-                    <div>
-                        <div class="detail-label">Stock</div>
-                        <div class="detail-value">${availQty} / ${totalQty}</div>
-                    </div>
-                </div>
-            `;
-        } else {
-            stockRowHtml = `
-                <div class="detail-row">
-                    <div>
-                        <div class="detail-label">Stock</div>
-                        <div class="detail-value"><span class="detail-stock-value"><span class="status-badge ${stockStatusClass}">${stockStatusText}</span></span></div>
-                    </div>
-                    <div>
-                        <div class="detail-label">Unit Measure</div>
-                        <div class="detail-value">${escapeHtml(item.UnitMeasure || '')}</div>
-                    </div>
-                </div>
-            `;
-        }
-
         var actionsHtml = '';
         if (isAuthenticated) {
             var btns = [];
@@ -1572,73 +1541,37 @@ async function viewItem(id) {
         }
 
         const content = document.getElementById('sampleDetailContent');
-        content.innerHTML = `
-            <div class="detail-row">
-                <div>
-                    <div class="detail-label">Title</div>
-                    <div class="detail-value">${escapeHtml(item.Title || '')}</div>
-                </div>
-                <div>
-                    <div class="detail-label">Serial Number</div>
-                    <div class="detail-value">${escapeHtml(item.SerialNum || '')}</div>
-                </div>
-            </div>
-            <div class="detail-row">
-                <div>
-                    <div class="detail-label">Sample Type</div>
-                    <div class="detail-value">${escapeHtml(item.SampleType || '')}</div>
-                </div>
-                <div>
-                    <div class="detail-label">Storage Rack</div>
-                    <div class="detail-value">${escapeHtml(item.StorageLocationCode || '')}</div>
-                </div>
-            </div>
-            <div class="detail-row">
-                <div>
-                    <div class="detail-label">Category</div>
-                    <div class="detail-value">${escapeHtml(item.Category || '')}</div>
-                </div>
-                <div>
-                    <div class="detail-label">Sub Category</div>
-                    <div class="detail-value">${escapeHtml(item.SubCategory || '')}</div>
-                </div>
-            </div>
-            <div class="detail-row">
-                <div>
-                    <div class="detail-label">Brand</div>
-                    <div class="detail-value">${escapeHtml(item.Brand || '')}</div>
-                </div>
-                <div>
-                    <div class="detail-label">Model</div>
-                    <div class="detail-value">${escapeHtml(item.Model || '')}</div>
-                </div>
-            </div>
-            <div class="detail-row">
-                <div>
-                    <div class="detail-label">Department Owner</div>
-                    <div class="detail-value">${escapeHtml(item.DepartmentOwner || '')}</div>
-                </div>
-                <div>
-                    <div class="detail-label">Condition</div>
-                    <div class="detail-value">${escapeHtml(item.Condition || '')}</div>
-                </div>
-            </div>
-            <div class="detail-row">
-                <div>
-                    <div class="detail-label">Date Received</div>
-                    <div class="detail-value">${escapeHtml(item.DateReceived || '')}</div>
-                </div>
-                ${isExceptionalStatus ? '<div><div class="detail-label">Unit Measure</div><div class="detail-value">' + escapeHtml(item.UnitMeasure || '') + '</div></div>' : '<div></div>'}
-            </div>
-            ${statusRowHtml}
-            ${stockRowHtml}
-            <div class="detail-row" style="grid-column: 1 / -1;">
-                <div class="detail-label">Notes</div>
-                <div class="detail-value" style="margin-top:5px;">${escapeHtml(item.Notes || '')}</div>
-            </div>
-            ${actionsHtml}
-            ${historySectionHtml}
-        `;
+
+        function detailItem(label, value, fullWidth, multiline) {
+            var val = (value === null || value === undefined || value === '') ? '\u2014' : value;
+            var cls = 'detail-item';
+            if (fullWidth) cls += ' detail-item-full';
+            if (multiline) {
+                return '<div class="' + cls + '"><div class="detail-label">' + label + '</div><div class="detail-value detail-value-multiline">' + val + '</div></div>';
+            }
+            return '<div class="' + cls + '"><div class="detail-label">' + label + '</div><div class="detail-value">' + val + '</div></div>';
+        }
+
+        var stockBadgeHtml = '<span class="status-badge ' + stockStatusClass + '">' + stockStatusText + '</span>';
+
+        var compactGridHtml = '<div class="sample-details-compact-grid">';
+        compactGridHtml += detailItem('Title', escapeHtml(item.Title || ''));
+        compactGridHtml += detailItem('Serial Number', escapeHtml(item.SerialNum || ''));
+        compactGridHtml += detailItem('Sample Type', escapeHtml(item.SampleType || ''));
+        compactGridHtml += detailItem('Storage Rack', escapeHtml(item.StorageLocationCode || ''));
+        compactGridHtml += detailItem('Category', escapeHtml(item.Category || ''));
+        compactGridHtml += detailItem('Sub Category', escapeHtml(item.SubCategory || ''));
+        compactGridHtml += detailItem('Brand', escapeHtml(item.Brand || ''));
+        compactGridHtml += detailItem('Model', escapeHtml(item.Model || ''));
+        compactGridHtml += detailItem('Department Owner', escapeHtml(item.DepartmentOwner || ''));
+        compactGridHtml += detailItem('Condition', escapeHtml(item.Condition || ''));
+        compactGridHtml += detailItem('Date Received', item.DateReceived ? escapeHtml(item.DateReceived) : '');
+        compactGridHtml += detailItem('Unit Measure', escapeHtml(item.UnitMeasure || ''));
+        compactGridHtml += detailItem('Stock', stockBadgeHtml);
+        compactGridHtml += detailItem('Notes', escapeHtml(item.Notes || ''), true, true);
+        compactGridHtml += '</div>';
+
+        content.innerHTML = compactGridHtml + actionsHtml + historySectionHtml;
 
         const historyContainer = document.getElementById('historyContainer');
         const historyArrow = document.getElementById('historyArrow');
