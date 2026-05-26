@@ -1,62 +1,115 @@
-# Sample Management API
+# Sample Management System
 
-FastAPI backend for sample inventory and checkout tracking with user authentication.
+Internal web application for managing sample inventory, checkout, and return tracking.
 
 ## Features
 
-- **Sample Inventory**: Full CRUD operations for samples with 19 customizable fields
-- **User Authentication**: Session-based auth with admin/user roles
-- **Checkout System**: Track sample checkouts, returns, and history
-- **Dashboard**: Admin-only statistics and rack summaries
-- **Multi-database**: Supports SQLite (local) and PostgreSQL (production)
+- Sample inventory management
+- Checkout and return tracking
+- Role-based access control (Admin / User)
+- Responsive UI for desktop and mobile
+- Internal operational workflow support
 
-## Local Development
+## Development Setup
 
-### With SQLite (default)
 ```bash
-pip install -r requirements.txt
-python -m uvicorn main:app --reload
-```
-Visit http://localhost:8000
-
-### With Local PostgreSQL
-```bash
-export DATABASE_URL=postgresql://postgres:password@localhost:5432/sample_management
 pip install -r requirements.txt
 python -m uvicorn main:app --reload
 ```
 
 ## Authentication
 
-Default development accounts (passwords must be changed in production):
-- `admin` / `admin123` (admin user)
-- `user` / `user123` (regular user)
+### Production
 
-## API Routes
+- No default credentials are provided.
+- All accounts must be created by Admin.
+- Users should change their password on first login.
+
+### Development
+
+For local development only, credentials may be configured through environment variables.
+Do not use weak or default passwords in production.
+
+Example:
+
+```bash
+DEV_ADMIN_USERNAME=admin
+DEV_ADMIN_PASSWORD=change_this_to_a_strong_password
+```
+
+Never commit real credentials into the repository.
+
+## API Routes Summary
 
 ### Authentication
-- `POST /api/auth/login` — Authenticate and create session
-- `POST /api/auth/logout` — Clear session
-- `GET /api/auth/me` — Get current user
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
 
-### Samples
-- `GET /api/items` — List samples (filters: `search`, `status`, `rack`)
-- `GET /api/items/{id}` — Get sample with checkout history
-- `POST /api/items` — Create sample (admin only)
-- `PUT /api/items/{id}` — Update sample (admin only)
-- `DELETE /api/items/{id}` — Delete sample (admin only)
+### Sample Management
+- `GET /api/samples`
+- `POST /api/samples` (Admin)
+- `PUT /api/samples/{id}` (Admin)
+- `DELETE /api/samples/{id}` (Admin)
 
-### Checkout
-- `POST /api/checkout` — Create checkout record
-- `PUT /api/checkout/{id}/return` — Return a checked out sample
-- `GET /api/checkout/records` — List checkout records (filter by `sample_id`)
-- `GET /api/checkout/overdue` — Get overdue checkouts (admin only)
+### Checkout / Return
+- `POST /api/checkout`
+- `POST /api/return`
 
-### Dashboard (Admin Only)
-- `GET /api/dashboard/stats` — Summary statistics
-- `GET /api/dashboard/rack-summary` — Samples by storage location
-- `GET /api/dashboard/current-checkout` — Currently checked out samples
-- `GET /api/dashboard/recent-returns` — Recent returns
+### User Management
+- Admin creates, updates, and disables users
 
-### Health Check
-- `GET /api/health` — Returns `{"status":"ok"}`
+## Security Notes
+
+- Default credentials are not allowed in production.
+- Passwords are hashed using bcrypt.
+- API documentation should be disabled in production.
+- Admin-only account creation is enforced.
+- Ongoing hardening items include session security, CSRF protection, and audit logging.
+
+## Version History
+
+### V1.3
+Focus: UI/UX and modal optimization
+
+- Compact modal layout improvements
+- Mobile modal scrolling improvements
+- Checkout and Return modal refinement
+- Table and spacing density improvements
+- CSS adjustments for more consistent layout behavior
+
+### V1.2
+Focus: authentication and baseline security hardening
+
+- Admin-only account creation
+- Public registration disabled
+- Password hashing with bcrypt
+- Production API docs exposure removed
+
+### V1.1
+Focus: core business workflow
+
+- Sample inventory CRUD
+- Checkout and return workflow
+- Basic role separation between Admin and User
+
+### V1.0
+Initial release
+
+- Basic sample tracking system
+- Initial UI and workflow foundation
+- Early database-backed implementation
+
+## Deployment Notes
+
+- Hosted on Railway
+- PostgreSQL database
+- Manual deploy is recommended for controlled release management
+
+## Important
+
+This system is intended for internal use only.
+
+Ensure:
+- strong passwords
+- controlled repository access
+- secure environment variable handling
