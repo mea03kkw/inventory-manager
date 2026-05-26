@@ -1014,7 +1014,7 @@ function renderItems() {
         }
         var statusText = getDisplayStatusText(item);
         var statusClass = getDisplayStatusClass(item);
-        return '\n            <tr onclick="viewItem(' + item.id + ')" style="cursor:pointer;">\n                <td>' + escapeHtml(item.Title || '') + '</td>\n                <td>' + escapeHtml(item.SerialNum || '') + '</td>\n                <td>' + escapeHtml(item.SampleType || '') + '</td>\n                <td>' + escapeHtml(item.StorageLocationCode || '') + '</td>\n                <td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>\n                <td>' + actionCellHtml + '</td>\n            </tr>\n        ';
+        return '\n            <tr onclick="viewItem(' + item.id + ')" style="cursor:pointer;">\n                <td class="photo-col-cell">' + (item.PhotoLink ? '<img class="table-photo-thumb" src="' + API.photoGet(item.id) + '" alt="">' : '') + '</td>\n                <td>' + escapeHtml(item.Title || '') + '</td>\n                <td>' + escapeHtml(item.SerialNum || '') + '</td>\n                <td>' + escapeHtml(item.SampleType || '') + '</td>\n                <td>' + escapeHtml(item.StorageLocationCode || '') + '</td>\n                <td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>\n                <td>' + actionCellHtml + '</td>\n            </tr>\n        ';
     }).join('');
 
     if (cardsContainer) {
@@ -1031,7 +1031,13 @@ function renderItems() {
             var statusClass = getDisplayStatusClass(item);
             var actionHtml = getPrimaryActionHtml(item, canBorrowReturn);
 
-            return '\n<div class="inventory-card" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__identity">\n    <div class="inventory-card__title">' + escapeHtml(item.Title || '') + '</div>\n    <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n  </div>\n  <div class="inventory-card__status-row">\n    <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n    ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n  </div>\n  ' + metaHtml + '\n</div>';
+            var cardHtml;
+            if (item.PhotoLink) {
+                cardHtml = '\n<div class="inventory-card inventory-card-photo" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__photo-layout">\n    <div class="inventory-card__thumb-wrap"><img class="mobile-card-thumb" src="' + API.photoGet(item.id) + '" alt=""></div>\n    <div class="inventory-card__photo-content">\n      <div class="inventory-card__identity">\n        <div class="inventory-card__title">' + escapeHtml(item.Title || '') + '</div>\n        <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n      </div>\n      <div class="inventory-card__status-row">\n        <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n        ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n      </div>\n      ' + metaHtml + '\n    </div>\n  </div>\n</div>';
+            } else {
+                cardHtml = '\n<div class="inventory-card" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__identity">\n    <div class="inventory-card__title">' + escapeHtml(item.Title || '') + '</div>\n    <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n  </div>\n  <div class="inventory-card__status-row">\n    <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n    ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n  </div>\n  ' + metaHtml + '\n</div>';
+            }
+            return cardHtml;
         }).join('');
     }
 }

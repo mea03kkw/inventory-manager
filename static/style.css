@@ -2093,6 +2093,79 @@ button.btn-pending {
 }
 
 /* ============================================================
+   Desktop Table Photo Column
+   ============================================================ */
+
+.photo-col-header {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    text-align: center;
+    font-size: 11px;
+    color: #8a96a8;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 14px 4px !important;
+}
+
+.photo-col-cell {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    text-align: center;
+    padding: 6px 4px !important;
+    vertical-align: middle;
+}
+
+.table-photo-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 4px;
+    object-fit: cover;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* ============================================================
+   Mobile Card Photo Layout
+   ============================================================ */
+
+.inventory-card__photo-layout {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.inventory-card__thumb-wrap {
+    flex: 0 0 52px;
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+}
+
+.mobile-card-thumb {
+    width: 52px;
+    height: 52px;
+    border-radius: 6px;
+    object-fit: cover;
+    display: block;
+}
+
+.inventory-card__photo-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.inventory-card-photo .inventory-card__identity {
+    margin-bottom: 6px;
+}
+
+.inventory-card-photo .inventory-card__status-row {
+    margin-bottom: 4px;
+}
+
+/* ============================================================
    Users Cards (Mobile)
    ============================================================ */
 
