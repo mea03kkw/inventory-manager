@@ -1996,6 +1996,103 @@ button.btn-pending {
 }
 
 /* ============================================================
+   Photo Section (Add/Edit Modal)
+   ============================================================ */
+
+.photo-section {
+    margin-top: 4px;
+    padding: 10px 12px;
+    border: 1px dashed #ccc;
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+.photo-section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.photo-section-header label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0;
+}
+
+.photo-helper-text {
+    font-size: 11px;
+    color: #999;
+}
+
+.photo-preview-wrap {
+    margin-bottom: 6px;
+}
+
+.photo-preview {
+    max-width: 120px;
+    max-height: 120px;
+    border-radius: 6px;
+    object-fit: cover;
+    border: 1px solid #e0e0e0;
+}
+
+.photo-status-text {
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 4px;
+    min-height: 14px;
+}
+
+.photo-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.photo-input-hidden {
+    display: none;
+}
+
+.photo-btn {
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    min-height: 30px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+}
+
+.photo-btn-upload {
+    background: #EAF3FB;
+    color: #005EB8;
+    border-color: #C9E0F5;
+}
+
+.photo-btn-upload:hover {
+    background: #D0E5F9;
+    border-color: #005EB8;
+}
+
+.photo-btn-remove {
+    background: #FDECEC;
+    color: #D92D20;
+    border-color: #F5C6CB;
+}
+
+.photo-btn-remove:hover {
+    background: #F8D7DA;
+    border-color: #D92D20;
+}
+
+/* ============================================================
    Users Cards (Mobile)
    ============================================================ */
 

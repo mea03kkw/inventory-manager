@@ -446,6 +446,21 @@
                     <label for="Notes">Notes</label>
                     <textarea id="Notes" rows="3"></textarea>
                 </div>
+                <div id="photoSection" class="photo-section form-group full-width" data-admin-only>
+                    <div class="photo-section-header">
+                        <label>Sample Photo</label>
+                        <span class="photo-helper-text">Admin only. JPG/PNG/WEBP. Auto-compressed &le;0.3 MB.</span>
+                    </div>
+                    <div class="photo-preview-wrap">
+                        <img id="photoPreview" class="photo-preview" style="display:none;" alt="Photo preview">
+                    </div>
+                    <div id="photoStatus" class="photo-status-text"></div>
+                    <div class="photo-actions" id="photoActions">
+                        <input type="file" id="photoInput" class="photo-input-hidden" accept="image/jpeg,image/png,image/webp" capture="environment" onchange="handlePhotoSelect()">
+                        <button type="button" id="photoUploadBtn" class="photo-btn photo-btn-upload" onclick="document.getElementById('photoInput').click()">Choose Photo</button>
+                        <button type="button" id="photoRemoveBtn" class="photo-btn photo-btn-remove" style="display:none;" onclick="handlePhotoRemove()">Remove</button>
+                    </div>
+                </div>
             </div>
             <div class="form-actions" style="padding:0 25px 25px;">
                 <button type="submit" id="submitBtn">Add Sample</button>
@@ -709,7 +724,7 @@
     <script src="/static/app.js"></script>
 
     <footer class="app-footer">
-        <div class="app-footer__version">Sample Management System v1.4.0</div>
+        <div class="app-footer__version">Sample Management System v1.5.0</div>
         <div class="app-footer__contact">
             Need help or want to report a bug? Contact the system administrator or the web app developer.
             <br>Web app developer: Kaye Wong

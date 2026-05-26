@@ -81,7 +81,11 @@ const API = {
     myActiveCheckouts: () => `${API_BASE}/me/active-checkouts`,
     myCheckoutHistory: () => `${API_BASE}/me/checkout-history`,
     myProfile: () => `${API_BASE}/me/profile`,
-    myChangePassword: () => `${API_BASE}/me/change-password`
+    myChangePassword: () => `${API_BASE}/me/change-password`,
+    // Photo
+    photoUpload: (id) => `${API_BASE}/items/${id}/photo`,
+    photoDelete: (id) => `${API_BASE}/items/${id}/photo`,
+    photoGet: (id) => `${API_BASE}/items/${id}/photo`
 };
 
 // ============================================================
@@ -94,6 +98,93 @@ let allRacks = new Set();
 let currentUser = null;
 let sortColumn = '';
 let sortDirection = 'asc';
+
+// ============================================================
+// Photo State (for Add/Edit modal)
+// ============================================================
+
+let photoState = {
+    file: null,
+    previewUrl: null,
+    removed: false,
+    initialPhotoUrl: null
+};
+
+function resetPhotoState() {
+    if (photoState.previewUrl && photoState.previewUrl !== photoState.initialPhotoUrl) {
+        URL.revokeObjectURL(photoState.previewUrl);
+    }
+    photoState.file = null;
+    photoState.previewUrl = null;
+    photoState.removed = false;
+    photoState.initialPhotoUrl = null;
+}
+
+// ============================================================
+// Client-side image compression
+// ============================================================
+
+function compressImage(file, maxSizeBytes, maxWidth) {
+    return new Promise(function(resolve, reject) {
+        if (maxSizeBytes === undefined) maxSizeBytes = 300 * 1024;
+        if (maxWidth === undefined) maxWidth = 1280;
+
+        if (file.size <= maxSizeBytes) {
+            resolve(file);
+            return;
+        }
+
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var img = new Image();
+            img.onload = function() {
+                var canvas = document.createElement('canvas');
+                var ctx = canvas.getContext('2d');
+                var w = img.width;
+                var h = img.height;
+                if (w > maxWidth) {
+                    var ratio = maxWidth / w;
+                    w = maxWidth;
+                    h = Math.round(h * ratio);
+                }
+                canvas.width = w;
+                canvas.height = h;
+                ctx.drawImage(img, 0, 0, w, h);
+
+                var quality = 0.85;
+                var lastBlob = null;
+                function tryQuality() {
+                    canvas.toBlob(function(blob) {
+                        if (!blob) {
+                            if (lastBlob) {
+                                resolve(lastBlob);
+                            } else {
+                                reject(new Error('Compression failed'));
+                            }
+                            return;
+                        }
+                        if (blob.size <= maxSizeBytes || quality <= 0.2) {
+                            resolve(blob);
+                        } else {
+                            lastBlob = blob;
+                            quality -= 0.05;
+                            tryQuality();
+                        }
+                    }, 'image/jpeg', quality);
+                }
+                tryQuality();
+            };
+            img.onerror = function() {
+                reject(new Error('Failed to load image'));
+            };
+            img.src = e.target.result;
+        };
+        reader.onerror = function() {
+            reject(new Error('Failed to read file'));
+        };
+        reader.readAsDataURL(file);
+    });
+}
 
 // ============================================================
 // Auth Functions
@@ -1103,16 +1194,14 @@ function showAddForm() {
         showToast('Only administrators can add or edit samples.', 'error');
         return;
     }
-    // Clear form and set to add mode
+    resetPhotoState();
     clearForm();
     editingId = null;
     document.getElementById('formTitle').textContent = 'Add New Sample';
     document.getElementById('submitBtn').textContent = 'Add Sample';
-    // Open modal
     openModal('addModal');
-    // Focus first field after modal opens
-    setTimeout(() => {
-        const titleEl = document.getElementById('Title');
+    setTimeout(function() {
+        var titleEl = document.getElementById('Title');
         if (titleEl) titleEl.focus();
     }, 100);
 }
@@ -1122,28 +1211,133 @@ function startEdit(id) {
         showToast('Only administrators can edit samples.', 'error');
         return;
     }
-    const item = allItems.find(i => String(i.id) === String(id));
+    var item = allItems.find(function(i) { return String(i.id) === String(id); });
     if (!item) {
         console.error('Edit error: item not found in allItems, id=', id);
         return;
     }
+    resetPhotoState();
     editingId = id;
     fillForm(item);
     document.getElementById('formTitle').textContent = 'Edit Sample';
     document.getElementById('submitBtn').textContent = 'Save Changes';
+
+    // Load existing photo if present
+    var photoSection = document.getElementById('photoSection');
+    if (photoSection) photoSection.style.display = currentUser.is_admin ? '' : 'none';
+    var photoPreview = document.getElementById('photoPreview');
+    var photoActions = document.getElementById('photoActions');
+    var photoRemoveBtn = document.getElementById('photoRemoveBtn');
+
+    if (item.PhotoLink) {
+        photoState.initialPhotoUrl = API.photoGet(id);
+        if (photoPreview) {
+            photoPreview.src = API.photoGet(id);
+            photoPreview.style.display = '';
+        }
+        if (photoRemoveBtn) photoRemoveBtn.style.display = '';
+        if (photoActions) photoActions.style.display = '';
+    } else {
+        if (photoPreview) photoPreview.style.display = 'none';
+        if (photoRemoveBtn) photoRemoveBtn.style.display = 'none';
+    }
+
     openModal('addModal');
-    setTimeout(() => {
-        const titleEl = document.getElementById('Title');
+    setTimeout(function() {
+        var titleEl = document.getElementById('Title');
         if (titleEl) titleEl.focus();
     }, 100);
 }
 
 function cancelEdit() {
     editingId = null;
+    resetPhotoState();
     clearForm();
     document.getElementById('formTitle').textContent = 'Add New Sample';
     document.getElementById('submitBtn').textContent = 'Add Sample';
+    var photoPreview = document.getElementById('photoPreview');
+    if (photoPreview) photoPreview.style.display = 'none';
+    var photoRemoveBtn = document.getElementById('photoRemoveBtn');
+    if (photoRemoveBtn) photoRemoveBtn.style.display = 'none';
+    var photoStatus = document.getElementById('photoStatus');
+    if (photoStatus) photoStatus.textContent = '';
+    var photoInput = document.getElementById('photoInput');
+    if (photoInput) photoInput.value = '';
     closeModal();
+}
+
+// ============================================================
+// Photo Selection Handlers
+// ============================================================
+
+function handlePhotoSelect() {
+    var input = document.getElementById('photoInput');
+    if (!input || !input.files || !input.files[0]) return;
+    var file = input.files[0];
+
+    var allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (allowedTypes.indexOf(file.type) === -1) {
+        showToast('Invalid file type. Allowed: JPG, PNG, WEBP', 'error');
+        input.value = '';
+        return;
+    }
+
+    var photoStatus = document.getElementById('photoStatus');
+    if (photoStatus) photoStatus.textContent = 'Compressing...';
+
+    compressImage(file, 300 * 1024, 1280).then(function(compressed) {
+        photoState.file = compressed;
+        photoState.removed = false;
+
+        var previewUrl = URL.createObjectURL(compressed);
+        if (photoState.previewUrl && photoState.previewUrl !== photoState.initialPhotoUrl) {
+            URL.revokeObjectURL(photoState.previewUrl);
+        }
+        photoState.previewUrl = previewUrl;
+
+        var preview = document.getElementById('photoPreview');
+        if (preview) {
+            preview.src = previewUrl;
+            preview.style.display = '';
+        }
+
+        var removeBtn = document.getElementById('photoRemoveBtn');
+        if (removeBtn) removeBtn.style.display = '';
+
+        var uploadBtn = document.getElementById('photoUploadBtn');
+        if (uploadBtn) uploadBtn.textContent = 'Replace Photo';
+
+        var sizeKb = Math.round(compressed.size / 1024);
+        if (photoStatus) photoStatus.textContent = 'Compressed: ' + sizeKb + ' KB';
+    }).catch(function(err) {
+        showToast('Image compression failed: ' + err.message, 'error');
+        if (photoStatus) photoStatus.textContent = 'Compression failed';
+        input.value = '';
+    });
+}
+
+function handlePhotoRemove() {
+    if (photoState.previewUrl && photoState.previewUrl !== photoState.initialPhotoUrl) {
+        URL.revokeObjectURL(photoState.previewUrl);
+    }
+    photoState.file = null;
+    photoState.previewUrl = null;
+    photoState.removed = true;
+
+    var preview = document.getElementById('photoPreview');
+    if (preview) preview.style.display = 'none';
+
+    var removeBtn = document.getElementById('photoRemoveBtn');
+    if (removeBtn) removeBtn.style.display = 'none';
+
+    var uploadBtn = document.getElementById('photoUploadBtn');
+    if (uploadBtn) uploadBtn.textContent = 'Choose Photo';
+
+    var input = document.getElementById('photoInput');
+    if (input) input.value = '';
+
+    var status = document.getElementById('photoStatus');
+    if (status) status.textContent = 'Photo will be removed on save';
 }
 
 async function submitItemForm(e) {
@@ -1153,52 +1347,81 @@ async function submitItemForm(e) {
     normalizeItemFormData();
     if (!validateItemForm()) return;
     
-    const submitBtn = document.getElementById('submitBtn');
+    var submitBtn = document.getElementById('submitBtn');
     setButtonPending(submitBtn, true, 'Saving...');
     
-    const data = {};
-    FIELD_LIST.forEach(f => {
-        const el = document.getElementById(f);
+    var data = {};
+    FIELD_LIST.forEach(function(f) {
+        var el = document.getElementById(f);
         if (el) {
             if (el.tagName === 'SELECT' || el.type === 'checkbox') {
                 data[f] = el.value || '';
             } else {
                 data[f] = el.value || '';
             }
-        } else {
-            console.error('Form field not found:', f);
         }
     });
     
-    // Ensure Status has a valid value
     if (!data.Status || data.Status === '') {
         data.Status = 'IN_STOCK';
     }
+
+    var savedItemId = editingId;
     
     try {
         if (editingId === null) {
-            const response = await fetch(API.create(), {
+            var response = await fetch(API.create(), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
             if (!response.ok) {
-                const err = await response.json();
+                var err = await response.json();
                 throw new Error(err.detail || 'Failed to create sample');
             }
+            var created = await response.json();
+            savedItemId = created.id;
             showToast('Sample created successfully', 'success');
         } else {
-            const response = await fetch(API.update(editingId), {
+            var response = await fetch(API.update(editingId), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
             if (!response.ok) {
-                const err = await response.json();
+                var err = await response.json();
                 throw new Error(err.detail || 'Failed to update sample');
             }
             showToast('Sample updated successfully', 'success');
             editingId = null;
+        }
+
+        // Photo upload/delete happens only after sample record save succeeds
+        if (savedItemId) {
+            if (photoState.file) {
+                var formData = new FormData();
+                formData.append('file', photoState.file, 'photo.jpg');
+                var photoRes = await fetch(API.photoUpload(savedItemId), {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!photoRes.ok) {
+                    var photoErr = await photoRes.json();
+                    showToast('Sample saved but photo upload failed: ' + (photoErr.detail || 'Unknown error'), 'error');
+                } else {
+                    showToast('Photo uploaded', 'success');
+                }
+            } else if (photoState.removed && photoState.initialPhotoUrl) {
+                var delRes = await fetch(API.photoDelete(savedItemId), {
+                    method: 'DELETE'
+                });
+                if (!delRes.ok) {
+                    var delErr = await delRes.json();
+                    showToast('Sample saved but photo removal failed: ' + (delErr.detail || 'Unknown error'), 'error');
+                } else {
+                    showToast('Photo removed', 'success');
+                }
+            }
         }
         
         cancelEdit();
@@ -1216,6 +1439,17 @@ async function deleteSample(id) {
         return;
     }
     if (!confirm('Are you sure you want to delete this sample?')) return;
+
+    // Also delete photo if present
+    var item = allItems.find(function(i) { return String(i.id) === String(id); });
+    if (item && item.PhotoLink) {
+        try {
+            await fetch(API.photoDelete(id), { method: 'DELETE' });
+        } catch (e) {
+            // Non-critical; continue with item deletion
+        }
+    }
+
     try {
         var delBtn = document.querySelector('.detail-modal .delete');
         if (delBtn) setButtonPending(delBtn, true, 'Deleting...');
@@ -1569,6 +1803,15 @@ async function viewItem(id) {
         compactGridHtml += detailItem('Unit Measure', escapeHtml(item.UnitMeasure || ''));
         compactGridHtml += detailItem('Stock', stockBadgeHtml);
         compactGridHtml += detailItem('Notes', escapeHtml(item.Notes || ''), true, true);
+
+        // Photo thumbnail in detail view
+        if (item.PhotoLink) {
+            compactGridHtml += '<div class="detail-item detail-item-full">';
+            compactGridHtml += '<div class="detail-label">Photo</div>';
+            compactGridHtml += '<div class="detail-value"><img src="' + API.photoGet(item.id) + '" alt="Sample photo" style="max-width:120px;max-height:120px;border-radius:4px;object-fit:cover;cursor:pointer;" onclick="window.open(\'' + API.photoGet(item.id) + '\', \'_blank\')"></div>';
+            compactGridHtml += '</div>';
+        }
+
         compactGridHtml += '</div>';
 
         content.innerHTML = compactGridHtml + actionsHtml + historySectionHtml;

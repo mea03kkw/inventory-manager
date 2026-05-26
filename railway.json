@@ -1,9 +1,12 @@
 {
     "build":  {
-                  "builder":  "RAILPACK"
-              },
+                   "builder":  "RAILPACK"
+               },
     "$schema":  "https://railway.com/railway.schema.json",
     "deploy":  {
-                   "startCommand":  "uvicorn main:app --host 0.0.0.0 --port $PORT"
-               }
+                    "startCommand":  "uvicorn main:app --host 0.0.0.0 --port $PORT",
+                    "volumes": {
+                        "/app/uploads": { "name": "sample-photos" }
+                    }
+                }
 }

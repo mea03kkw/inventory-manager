@@ -4,13 +4,14 @@
 # ============================================================================
 
 import os
+import uuid
 from datetime import date, datetime, timedelta
 from typing import Optional, Tuple
 
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse, HTMLResponse, Response
+from fastapi.responses import JSONResponse, HTMLResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -22,6 +23,14 @@ except ImportError:
 import csv
 import io
 
+# ============================================================================
+# Photo upload configuration
+# ============================================================================
+
+PHOTO_UPLOAD_DIR = os.getenv("PHOTO_UPLOAD_DIR", os.path.join(os.getcwd(), "uploads", "sample_photos"))
+ALLOWED_PHOTO_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
+ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+MAX_PHOTO_SIZE_BYTES = 300 * 1024  # 300 KB
 
 # ============================================================================
 # Constants
@@ -226,8 +235,55 @@ def _parse_unit_count(value) -> int:
 
 
 # ============================================================================
-# Password utilities
+# Photo file helpers
 # ============================================================================
+
+
+def _ensure_upload_dir():
+    os.makedirs(PHOTO_UPLOAD_DIR, exist_ok=True)
+
+
+def _safe_photo_filename(sample_id: int) -> str:
+    unique_id = uuid.uuid4().hex[:8]
+    return f"sample_{sample_id}_{unique_id}.jpg"
+
+
+def _validate_and_compress_image(file_bytes: bytes) -> Optional[bytes]:
+    from PIL import Image
+    try:
+        img = Image.open(io.BytesIO(file_bytes))
+        img.verify()
+        img = Image.open(io.BytesIO(file_bytes))
+        img = img.convert("RGB")
+    except Exception:
+        return None
+    max_width = 1280
+    if img.width > max_width:
+        ratio = max_width / img.width
+        new_size = (max_width, int(img.height * ratio))
+        img = img.resize(new_size, Image.LANCZOS)
+    if len(file_bytes) <= MAX_PHOTO_SIZE_BYTES:
+        output = io.BytesIO()
+        img.save(output, format="JPEG", quality=90)
+        if output.tell() <= MAX_PHOTO_SIZE_BYTES:
+            return output.getvalue()
+    quality = 85
+    while quality >= 20:
+        output = io.BytesIO()
+        img.save(output, format="JPEG", quality=quality)
+        if output.tell() <= MAX_PHOTO_SIZE_BYTES:
+            return output.getvalue()
+        quality -= 5
+    return None
+
+
+def _delete_photo_file(photo_path: str):
+    if photo_path and os.path.exists(photo_path):
+        try:
+            os.remove(photo_path)
+        except OSError:
+            pass
+
 
 # ============================================================================
 # Auth Helpers
@@ -339,7 +395,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
 app = FastAPI(
     title="Sample Management API",
     description="Backend for sample inventory and checkout tracking.",
-    version="1.0.0",
+    version="1.5.0",
     docs_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/docs",
     redoc_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/redoc",
     openapi_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/openapi.json",
@@ -575,6 +631,12 @@ def init_db():
 
         cur.execute("UPDATE inventory SET available_quantity = quantity WHERE available_quantity IS NULL")
         cur.execute("UPDATE inventory SET available_quantity = quantity WHERE available_quantity > quantity")
+
+        # Photo metadata columns for PostgreSQL
+        cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_original_name TEXT')
+        cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_uploaded_at TEXT')
+        cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_uploaded_by INTEGER')
+        cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_size_bytes INTEGER')
     else:
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='checkout_records'")
         has_checkout = cur.fetchone() is not None
@@ -687,6 +749,24 @@ def init_db():
                     "UPDATE inventory SET quantity = ?, available_quantity = ? WHERE id = ?",
                     (new_quantity, new_available, item_id)
                 )
+
+        # Photo metadata columns for SQLite
+        try:
+            cur.execute('ALTER TABLE inventory ADD COLUMN photo_original_name TEXT')
+        except Exception:
+            pass
+        try:
+            cur.execute('ALTER TABLE inventory ADD COLUMN photo_uploaded_at TEXT')
+        except Exception:
+            pass
+        try:
+            cur.execute('ALTER TABLE inventory ADD COLUMN photo_uploaded_by INTEGER')
+        except Exception:
+            pass
+        try:
+            cur.execute('ALTER TABLE inventory ADD COLUMN photo_size_bytes INTEGER')
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -697,6 +777,7 @@ def init_db():
 
 @app.on_event("startup")
 async def init_db_async():
+    _ensure_upload_dir()
     await run_in_threadpool(init_db)
 
 
@@ -2323,6 +2404,212 @@ async def delete_item(request: Request, item_id: int):
         await conn.close()
 
     return JSONResponse({"status": "deleted"})
+
+
+# ============================================================================
+# Photo upload / replace / delete / serve endpoints
+# ============================================================================
+
+
+@app.post("/api/items/{item_id}/photo")
+async def upload_item_photo(request: Request, item_id: int, file: UploadFile = File(...)):
+    admin = await require_admin(request)
+    _ensure_upload_dir()
+
+    # Validate MIME type
+    if file.content_type not in ALLOWED_PHOTO_MIME_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}. Allowed: JPEG, PNG, WEBP")
+
+    # Validate extension
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_PHOTO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Invalid file extension: {ext}. Allowed: .jpg, .jpeg, .png, .webp")
+
+    # Read file bytes
+    file_bytes = await file.read()
+
+    # Validate and compress image
+    compressed = _validate_and_compress_image(file_bytes)
+    if compressed is None:
+        raise HTTPException(status_code=400, detail="Could not compress image to ≤300 KB within acceptable quality.")
+
+    # Check final size
+    if len(compressed) > MAX_PHOTO_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail=f"Compressed image exceeds {MAX_PHOTO_SIZE_BYTES} bytes.")
+
+    database_url = _get_db_url()
+
+    # Ensure item exists and get existing photo path
+    if is_postgres():
+        def _check():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute('SELECT id, "PhotoLink" FROM inventory WHERE id = %s', (item_id,))
+            row = cur.fetchone()
+            conn.close()
+            return row
+        row = await run_in_threadpool(_check)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT id, PhotoLink FROM inventory WHERE id = ?", (item_id,))
+        row = await cur.fetchone()
+        await conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+    existing_photo_link = row[1]
+
+    # Generate safe filename and save new file
+    new_filename = _safe_photo_filename(item_id)
+    new_photo_path = os.path.join(PHOTO_UPLOAD_DIR, new_filename)
+    with open(new_photo_path, "wb") as f:
+        f.write(compressed)
+
+    # Build relative path for DB
+    relative_path = f"sample_photos/{new_filename}"
+    now_iso = datetime.utcnow().isoformat()
+
+    # Update DB metadata
+    if is_postgres():
+        def _update():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute(
+                """UPDATE inventory SET "PhotoLink" = %s, photo_original_name = %s,
+                   photo_uploaded_at = %s, photo_uploaded_by = %s, photo_size_bytes = %s
+                   WHERE id = %s""",
+                (relative_path, file.filename, now_iso, admin.id, len(compressed), item_id),
+            )
+            conn.commit()
+            conn.close()
+        await run_in_threadpool(_update)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute(
+            """UPDATE inventory SET "PhotoLink" = ?, photo_original_name = ?,
+               photo_uploaded_at = ?, photo_uploaded_by = ?, photo_size_bytes = ?
+               WHERE id = ?""",
+            (relative_path, file.filename, now_iso, admin.id, len(compressed), item_id),
+        )
+        await conn.commit()
+        await conn.close()
+
+    # After DB update succeeds, delete old physical file if replacing
+    if existing_photo_link:
+        old_full_path = os.path.join(os.path.dirname(PHOTO_UPLOAD_DIR), existing_photo_link)
+        _delete_photo_file(old_full_path)
+
+    return JSONResponse({
+        "status": "ok",
+        "photo_path": relative_path,
+        "photo_size_bytes": len(compressed),
+    })
+
+
+@app.delete("/api/items/{item_id}/photo")
+async def delete_item_photo(request: Request, item_id: int):
+    admin = await require_admin(request)
+    database_url = _get_db_url()
+
+    if is_postgres():
+        def _fetch():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute('SELECT id, "PhotoLink" FROM inventory WHERE id = %s', (item_id,))
+            row = cur.fetchone()
+            conn.close()
+            return row
+        row = await run_in_threadpool(_fetch)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT id, PhotoLink FROM inventory WHERE id = ?", (item_id,))
+        row = await cur.fetchone()
+        await conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    photo_link = row[1]
+    if not photo_link:
+        raise HTTPException(status_code=404, detail="Item has no photo to delete")
+
+    # Delete physical file first (safe: _delete_photo_file swallows OSErrors)
+    old_full_path = os.path.join(os.path.dirname(PHOTO_UPLOAD_DIR), photo_link)
+    _delete_photo_file(old_full_path)
+
+    # Then clear DB metadata
+    if is_postgres():
+        def _clear():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute(
+                """UPDATE inventory SET "PhotoLink" = NULL, photo_original_name = NULL,
+                   photo_uploaded_at = NULL, photo_uploaded_by = NULL, photo_size_bytes = NULL
+                   WHERE id = %s""",
+                (item_id,),
+            )
+            conn.commit()
+            conn.close()
+        await run_in_threadpool(_clear)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute(
+            """UPDATE inventory SET "PhotoLink" = NULL, photo_original_name = NULL,
+               photo_uploaded_at = NULL, photo_uploaded_by = NULL, photo_size_bytes = NULL
+               WHERE id = ?""",
+            (item_id,),
+        )
+        await conn.commit()
+        await conn.close()
+
+    return JSONResponse({"status": "ok", "message": "Photo deleted"})
+
+
+@app.get("/api/items/{item_id}/photo")
+async def get_item_photo(item_id: int, request: Request):
+    await require_login(request)
+
+    if is_postgres():
+        def _fetch():
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor()
+            cur.execute('SELECT "PhotoLink" FROM inventory WHERE id = %s', (item_id,))
+            row = cur.fetchone()
+            conn.close()
+            return row
+        row = await run_in_threadpool(_fetch)
+    else:
+        conn = await aiosqlite.connect("sample_management.db")
+        cur = await conn.cursor()
+        await cur.execute("SELECT PhotoLink FROM inventory WHERE id = ?", (item_id,))
+        row = await cur.fetchone()
+        await conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    photo_link = row[0]
+    if not photo_link:
+        raise HTTPException(status_code=404, detail="Item has no photo")
+
+    photo_full_path = os.path.join(os.path.dirname(PHOTO_UPLOAD_DIR), photo_link)
+    if not os.path.exists(photo_full_path):
+        raise HTTPException(status_code=404, detail="Photo file not found on disk")
+
+    media_type_map = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+    }
+    ext = os.path.splitext(photo_link)[1].lower()
+    media_type = media_type_map.get(ext, "image/jpeg")
+
+    return FileResponse(photo_full_path, media_type=media_type)
 
 
 # ============================================================================
