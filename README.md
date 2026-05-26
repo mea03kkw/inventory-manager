@@ -68,6 +68,14 @@ Never commit real credentials into the repository.
 
 ## Version History
 
+### V1.4
+Focus: documentation cleanup and release control
+
+- Separated production and development authentication guidance
+- Added structured Security Notes section
+- Added formal Version History tracking in README
+- Improved deployment and release documentation clarity
+
 ### V1.3
 Focus: UI/UX and modal optimization
 
