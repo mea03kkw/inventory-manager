@@ -1552,13 +1552,17 @@ button.view-btn:hover {
     max-width: none;
   }
 
-  .detail-actions {
+.detail-actions {
     grid-template-columns: 1fr;
     gap: 12px;
   }
 
   .modal-header {
-    padding: 14px 16px;
+    padding: 12px 16px;
+  }
+
+  #checkoutModal .transaction-modal-body {
+    overflow-y: visible;
   }
 
   .modal-header h3 {
