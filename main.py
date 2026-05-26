@@ -2572,6 +2572,7 @@ async def delete_item_photo(request: Request, item_id: int):
 @app.get("/api/items/{item_id}/photo")
 async def get_item_photo(item_id: int, request: Request):
     await require_login(request)
+    database_url = _get_db_url()
 
     if is_postgres():
         def _fetch():
