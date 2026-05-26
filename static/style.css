@@ -1562,7 +1562,16 @@ button.view-btn:hover {
   }
 
   #checkoutModal .transaction-modal-body {
-    overflow-y: visible;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  #checkoutModal .modal-content {
+    max-height: none !important;
+  }
+
+  #checkoutModal {
+    overflow-y: auto;
   }
 
   .modal-header h3 {
