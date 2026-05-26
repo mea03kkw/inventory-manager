@@ -372,10 +372,9 @@ def _production_env_guard():
     errors = []
     if SESSION_SECRET == "dev-secret-change-in-production":
         errors.append("SESSION_SECRET is the insecure default; set it via environment variable")
-    if os.getenv("ADMIN_PASSWORD", "admin123") == "admin123":
-        errors.append("ADMIN_PASSWORD is the insecure default; set it via ADMIN_PASSWORD environment variable")
-    if os.getenv("USER_PASSWORD", "user123") == "user123":
-        errors.append("USER_PASSWORD is the insecure default; set it via USER_PASSWORD environment variable")
+    admin_pw = os.getenv("ADMIN_PASSWORD", "")
+    if not admin_pw or admin_pw == "admin123":
+        errors.append("ADMIN_PASSWORD must be set to a secure value (not the default) via environment variable")
     if errors:
         raise RuntimeError(
             "Production security guard: insecure defaults detected. "
@@ -501,25 +500,20 @@ def init_db():
     cur.execute("SELECT COUNT(*) FROM users")
     user_count = cur.fetchone()[0]
     if user_count == 0:
-        # Development seed accounts — use env vars in production
-        admin_username = os.getenv("ADMIN_USERNAME", "admin")
-        admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
-        user_username = os.getenv("USER_USERNAME", "user")
-        user_password = os.getenv("USER_PASSWORD", "user123")
-        dev_accounts = [
-            (admin_username, admin_password, True, "System Administrator"),
-            (user_username, user_password, False, "Regular User"),
-        ]
-        for username, password, is_admin, display in dev_accounts:
-            ph, salt_val = hash_password(password)
+        admin_password = os.getenv("ADMIN_PASSWORD", "")
+        if admin_password and admin_password != "admin123":
+            admin_username = os.getenv("ADMIN_USERNAME", "admin")
+            ph, salt_val = hash_password(admin_password)
             ph_placeholder = placeholder()
             salt_placeholder = placeholder()
             cur.execute(
                 f"""INSERT INTO users (username, password_hash, salt, display_name, is_admin, is_active)
                    VALUES ({ph_placeholder}, {ph_placeholder}, {ph_placeholder}, {ph_placeholder}, {ph_placeholder}, {ph_placeholder})""",
-                (username, ph, salt_val, display, is_admin, True),
+                (admin_username, ph, salt_val, "System Administrator", True, True),
             )
-        print("[INIT] Seeded dev accounts (passwords not logged for safety)")
+            print("[INIT] Bootstrap admin created from ADMIN_PASSWORD env var")
+        else:
+            print("[INIT] No bootstrap admin created — set ADMIN_PASSWORD env var (not 'admin123') to create one")
 
     # Create inventory and checkout_records tables
     if is_postgres():
