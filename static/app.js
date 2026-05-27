@@ -1,5 +1,5 @@
 // ============================================================
-// Sample Management System - Frontend Application
+// HC R&D Sample Library - Frontend Application
 // ============================================================
 
 const API_BASE = '/api';
@@ -33,14 +33,14 @@ function openAdminDirectMailto(subject, body) {
 
 function openRegisterMailto() {
     openAdminDirectMailto(
-        'Sample Management System \u2013 Account Request',
+        'HC R&D Sample Library \u2013 Account Request',
         'Hello,\r\n\r\nPlease create an account for me.\r\n\r\nThanks.'
     );
 }
 
 function openForgotPasswordMailto() {
     openAdminDirectMailto(
-        'Sample Management System \u2013 Password Reset',
+        'HC R&D Sample Library \u2013 Password Reset',
         'Hello,\r\n\r\nPlease reset my password.\r\n\r\nThanks.'
     );
 }
@@ -212,6 +212,7 @@ function updateAuthUI() {
         `;
     }
     updateUIBasedOnRole();
+    updateGuestShellVisibility();
 }
 
 function updateUIBasedOnRole() {
@@ -263,6 +264,65 @@ function applyAdminOnlyVisibility(currentUser) {
     if (mobileAdminRow) mobileAdminRow.hidden = !isAdmin;
     if (addWrap) addWrap.hidden = !isAdmin;
     if (exportWrap) exportWrap.hidden = !isAdmin;
+}
+
+async function handleLandingLogin(e) {
+    e.preventDefault();
+
+    var btn = document.getElementById('landingLoginBtn');
+    var errorBox = document.getElementById('landingLoginError');
+
+    if (errorBox) {
+        errorBox.style.display = 'none';
+        errorBox.textContent = '';
+    }
+
+    setButtonPending(btn, true, 'Signing in...');
+
+    try {
+        var usernameEl = document.getElementById('landingLoginUsername');
+        var passwordEl = document.getElementById('landingLoginPassword');
+
+        if (usernameEl) document.getElementById('loginUsername').value = usernameEl.value;
+        if (passwordEl) document.getElementById('loginPassword').value = passwordEl.value;
+
+        await submitLogin(e);
+    } catch (err) {
+        if (errorBox) {
+            errorBox.textContent = (err && err.message) || 'Login failed';
+            errorBox.style.display = 'block';
+        }
+    } finally {
+        setButtonPending(btn, false);
+    }
+}
+
+function updateGuestShellVisibility() {
+    var guestEntry = document.getElementById('guestEntry');
+    var appShell = document.getElementById('appShell');
+    var footer = document.querySelector('.app-footer');
+    var isAuth = currentUser !== null;
+
+    if (guestEntry) guestEntry.classList.toggle('hidden', isAuth);
+    if (appShell) appShell.classList.toggle('hidden-shell', !isAuth);
+    if (footer) footer.style.display = isAuth ? '' : 'none';
+
+    if (!isAuth) {
+        var btn = document.getElementById('landingLoginBtn');
+        var errorBox = document.getElementById('landingLoginError');
+        var usernameEl = document.getElementById('landingLoginUsername');
+        var passwordEl = document.getElementById('landingLoginPassword');
+
+        setButtonPending(btn, false);
+
+        if (errorBox) {
+            errorBox.style.display = 'none';
+            errorBox.textContent = '';
+        }
+
+        if (usernameEl) usernameEl.value = '';
+        if (passwordEl) passwordEl.value = '';
+    }
 }
 
 async function loadCurrentUser() {
@@ -336,7 +396,7 @@ function showInfoModal(title, message) {
 function showRegisterInfo() {
     fetch('/api/settings/admin-contact').then(r => r.json()).then(contact => {
         const email = contact.email || '';
-        const link = email ? `<a href="mailto:${escapeHtml(email)}" style="color:#005EB8;text-decoration:underline;">${escapeHtml(email)}</a>` : 'your system administrator';
+        const link = email ? `<a href="mailto:${escapeHtml(email)}" style="color:#0B5ED7;text-decoration:underline;">${escapeHtml(email)}</a>` : 'your system administrator';
         showInfoModal('Contact Administrator',
             'Account registration is restricted.<br><br>' +
             `Please contact ${link} for account setup or password reset.`
@@ -352,7 +412,7 @@ function showRegisterInfo() {
 function showForgotPasswordInfo() {
     fetch('/api/settings/admin-contact').then(r => r.json()).then(contact => {
         const email = contact.email || '';
-        const link = email ? `<a href="mailto:${escapeHtml(email)}" style="color:#005EB8;text-decoration:underline;">${escapeHtml(email)}</a>` : 'your system administrator';
+        const link = email ? `<a href="mailto:${escapeHtml(email)}" style="color:#0B5ED7;text-decoration:underline;">${escapeHtml(email)}</a>` : 'your system administrator';
         showInfoModal('Forgot Password',
             'Password reset is handled by the administrator.<br><br>' +
             `Please contact ${link}.`
@@ -492,11 +552,11 @@ async function adminCreateUser() {
         const adminEmail = data.admin_email || (currentUser && currentUser.email) || '';
         const loginUrl = APP_LOGIN_URL;
 
-        var mailSubject = 'Sample Management System \u2013 Account Created';
+        var mailSubject = 'HC R&D Sample Library \u2013 Account Created';
         var mailBody = [
             'Hello,',
             '',
-            'An account has been created for you in the Sample Management System.',
+            'An account has been created for you in the HC R&D Sample Library.',
             '',
             'Username: ' + createdUsername,
             'Temporary Password: ' + tempPassword,
@@ -1901,7 +1961,7 @@ async function loadMyActiveCheckouts() {
             var statusLabel = item.status.charAt(0).toUpperCase() + item.status.slice(1).replace('_', ' ');
             var statusClass = 'status-' + item.status;
             var dueDisplay = item.due_date || '\u2014';
-            return '\n<div class="sample-mobile-card" onclick="viewMySample(' + item.sample_id + ')">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n    <span class="my-samples-status-badge ' + statusClass + '">' + statusLabel + '</span>\n  </div>\n  <div class="sample-mobile-card__meta">' +
+            return '\n<div class="sample-mobile-card" onclick="viewMySample(' + item.sample_id + ')">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5ED7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n    <span class="my-samples-status-badge ' + statusClass + '">' + statusLabel + '</span>\n  </div>\n  <div class="sample-mobile-card__meta">' +
                 (item.sample_code ? escapeHtml(item.sample_code) : '') +
                 (item.sample_code && item.sample_type ? '<span class="sample-mobile-card__meta-sep">\u00B7</span>' : '') +
                 (item.sample_type ? escapeHtml(item.sample_type) : '') +
@@ -1962,7 +2022,7 @@ async function loadMyHistory() {
 
         // Mobile cards
         cardsContainer.innerHTML = data.items.map(function(item) {
-            return '\n<div class="sample-mobile-card" onclick="viewMySample(' + item.sample_id + ')">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n  </div>\n  <div class="sample-mobile-card__meta">' +
+            return '\n<div class="sample-mobile-card" onclick="viewMySample(' + item.sample_id + ')">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5ED7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n  </div>\n  <div class="sample-mobile-card__meta">' +
                 (item.sample_code ? escapeHtml(item.sample_code) : '') +
             '</div>\n  <div class="sample-mobile-card__dates">' +
                 '<strong>Qty:</strong> ' + (item.quantity || 1) +
@@ -2014,7 +2074,7 @@ function loadMoreHistory() {
                 tableBody.insertAdjacentHTML('beforeend', row);
 
                 // Mobile card
-                var card = '\n<div class="sample-mobile-card" onclick="viewMySample(' + item.sample_id + ')">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n  </div>\n  <div class="sample-mobile-card__meta">' +
+                var card = '\n<div class="sample-mobile-card" onclick="viewMySample(' + item.sample_id + ')">\n  <div class="sample-mobile-card__top">\n    <div class="sample-mobile-card__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B5ED7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>\n    <div class="sample-mobile-card__title">' + escapeHtml(item.sample_name || '') + '</div>\n  </div>\n  <div class="sample-mobile-card__meta">' +
                     (item.sample_code ? escapeHtml(item.sample_code) : '') +
                 '</div>\n  <div class="sample-mobile-card__dates">' +
                     '<strong>Qty:</strong> ' + (item.quantity || 1) +
@@ -2570,11 +2630,11 @@ async function submitUserResetPassword(e) {
         var adminEmail = data.admin_email || (currentUser && currentUser.email) || '';
         var username = document.getElementById('resetPasswordUsername').textContent;
         var loginUrl = APP_LOGIN_URL;
-        var mailSubject = 'Sample Management System \u2013 Password Reset';
+        var mailSubject = 'HC R&D Sample Library \u2013 Password Reset';
         var mailBody = [
             'Hello,',
             '',
-            'Your password has been reset in the Sample Management System.',
+            'Your password has been reset in the HC R&D Sample Library.',
             '',
             'Username: ' + username,
             'Temporary Password: ' + tempPassword,
