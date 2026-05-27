@@ -1,4 +1,4 @@
-# Sample Management System
+# HC R&amp;D Sample Library
 
 Internal web application for managing sample inventory, checkout, and return tracking.
 
@@ -46,7 +46,7 @@ Never commit real credentials into the repository.
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
 
-### Sample Management
+### Sample Library
 - `GET /api/samples`
 - `POST /api/samples` (Admin)
 - `PUT /api/samples/{id}` (Admin)
