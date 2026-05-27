@@ -3258,7 +3258,7 @@ Mobile admin action row — final grid fix
 /* Admin mode indicator */
 body.admin-mode {
   border-top: none;
-  background: #0B5ED7;
+  background: #337FBF;
 }
 
 body.admin-mode .header,
