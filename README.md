@@ -74,6 +74,16 @@ Never commit real credentials into the repository.
 
 ## Version History
 
+### V1.6
+Focus: guest login V7, photo thumbnails, app rename
+
+- Full-page V7 guest login entry replacing modal-only login
+- Desktop table Photo column with 36x36 thumbnails
+- Mobile card left-thumbnail photo preview (52x52)
+- App renamed to "HC R&D Sample Library"
+- Admin-mode body background changed to Philips blue
+- Guest login micro-fixes: redundant hint removed, button/field reset on logout
+
 ### V1.5
 Focus: single-photo attachment for samples
 
