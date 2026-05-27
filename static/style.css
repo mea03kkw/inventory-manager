@@ -1,5 +1,5 @@
 /* ============================================================
-   Sample Management System - Styles
+   HC R&amp;D Sample Library - Styles
    ============================================================ */
 
 * { box-sizing: border-box; }
@@ -50,7 +50,7 @@ body {
 }
 
 .admin-badge {
-    background: #005EB8;
+    background: #0B5ED7;
     color: white;
     padding: 2px 8px;
     border-radius: 10px;
@@ -73,7 +73,7 @@ body {
 
 .header h1 {
     margin: 0;
-    color: #005EB8;
+    color: #0B5ED7;
     font-size: 22px;
 }
 
@@ -115,12 +115,12 @@ body {
 }
 
 .hamburger-btn:hover {
-    border-color: #005EB8;
+    border-color: #0B5ED7;
     background: #EAF3FB;
 }
 
 .hamburger-btn:hover span {
-    background: #005EB8;
+    background: #0B5ED7;
 }
 
 .nav-menu {
@@ -197,15 +197,15 @@ body {
 }
 
 .nav-tab:hover {
-    border-color: #005EB8;
-    color: #005EB8;
+    border-color: #0B5ED7;
+    color: #0B5ED7;
     background: #EAF3FB;
 }
 
 .nav-tab.active {
-    background: #005EB8;
+    background: #0B5ED7;
     color: white;
-    border-color: #005EB8;
+    border-color: #0B5ED7;
     box-shadow: 0 2px 4px rgba(0, 94, 184, 0.3);
 }
 
@@ -365,7 +365,7 @@ body {
 .filters-bar input[type="text"]:focus,
 .filters-bar select:focus {
     outline: none;
-    border-color: #005EB8;
+    border-color: #0B5ED7;
     box-shadow: 0 0 0 3px rgba(0, 94, 184, 0.1);
 }
 
@@ -397,8 +397,8 @@ body {
 
 .export-csv-btn {
     background: white;
-    color: #005EB8;
-    border: 1px solid #005EB8;
+    color: #0B5ED7;
+    border: 1px solid #0B5ED7;
     padding: 10px 20px;
     border-radius: 10px;
     cursor: pointer;
@@ -475,7 +475,7 @@ body {
 .form-group textarea:focus,
 .form-group select:focus {
     outline: none;
-    border-color: #005EB8;
+    border-color: #0B5ED7;
     box-shadow: 0 0 0 3px rgba(0,94,184,0.1);
 }
 
@@ -520,7 +520,7 @@ body {
 }
 
 .form-actions button[type="submit"] {
-    background: #005EB8;
+    background: #0B5ED7;
     color: white;
     padding: 12px 28px;
     font-size: 15px;
@@ -631,7 +631,7 @@ body {
 
 .status-badge.status-CHECKED_OUT {
     background: #EAF3FB;
-    color: #005EB8;
+    color: #0B5ED7;
 }
 
 .status-badge.status-LOST {
@@ -651,7 +651,7 @@ body {
 
 .status-CHECKED_OUT {
     background: #EAF3FB;
-    color: #005EB8;
+    color: #0B5ED7;
 }
 
 .status-LOST {
@@ -721,12 +721,12 @@ th {
 
 .sortable:hover {
     background: #EEF2F6;
-    color: #005EB8;
+    color: #0B5ED7;
 }
 
 .sort-indicator {
     font-size: 11px;
-    color: #005EB8;
+    color: #0B5ED7;
     margin-left: 2px;
 }
 
@@ -799,13 +799,13 @@ button.delete:hover {
 
 button.checkout-btn {
     background: #EAF3FB;
-    color: #005EB8;
+    color: #0B5ED7;
     border: 1px solid #C9E0F5;
 }
 
 button.checkout-btn:hover {
     background: #D0E5F9;
-    border-color: #005EB8;
+    border-color: #0B5ED7;
 }
 
 button.return-btn {
@@ -821,13 +821,13 @@ button.return-btn:hover {
 
 button.view-btn {
     background: #F5F7FA;
-    color: #005EB8;
+    color: #0B5ED7;
     border: 1px solid #D9E2EC;
 }
 
 button.view-btn:hover {
     background: #EAF3FB;
-    border-color: #005EB8;
+    border-color: #0B5ED7;
 }
 
 /* ============================================================
@@ -1162,7 +1162,7 @@ button.view-btn:hover {
     border-radius: 8px;
     padding: 16px;
     margin-bottom: 16px;
-    border-left: 4px solid #005EB8;
+    border-left: 4px solid #0B5ED7;
 }
 
 .sample-info-box p {
@@ -2072,13 +2072,13 @@ button.btn-pending {
 
 .photo-btn-upload {
     background: #EAF3FB;
-    color: #005EB8;
+    color: #0B5ED7;
     border-color: #C9E0F5;
 }
 
 .photo-btn-upload:hover {
     background: #D0E5F9;
-    border-color: #005EB8;
+    border-color: #0B5ED7;
 }
 
 .photo-btn-remove {
@@ -2305,7 +2305,7 @@ button.btn-pending {
 }
 
 button.action-email-btn {
-    background: #005EB8;
+    background: #0B5ED7;
     color: white;
     border: none;
 }
@@ -2316,8 +2316,8 @@ button.action-email-btn:hover {
 
 button.action-copy-btn {
     background: white;
-    color: #005EB8;
-    border: 1px solid #005EB8;
+    color: #0B5ED7;
+    border: 1px solid #0B5ED7;
 }
 
 button.action-copy-btn:hover {
@@ -2442,7 +2442,7 @@ button.action-copy-btn:hover {
 
 #my-samples-search:focus {
     outline: none;
-    border-color: #005EB8;
+    border-color: #0B5ED7;
     box-shadow: 0 0 0 3px rgba(0, 94, 184, 0.1);
 }
 
@@ -2472,14 +2472,14 @@ button.action-copy-btn:hover {
 }
 
 .filter-chip:hover {
-    border-color: #005EB8;
-    color: #005EB8;
+    border-color: #0B5ED7;
+    color: #0B5ED7;
 }
 
 .filter-chip.active {
-    background: #005EB8;
+    background: #0B5ED7;
     color: #FFFFFF;
-    border-color: #005EB8;
+    border-color: #0B5ED7;
 }
 
 /* Section */
@@ -2734,7 +2734,7 @@ button.action-copy-btn:hover {
     display: block;
     width: 20px;
     height: 24px;
-    border: 2px solid #005EB8;
+    border: 2px solid #0B5ED7;
     border-radius: 3px;
     position: absolute;
     top: 50%;
@@ -2753,7 +2753,7 @@ button.action-copy-btn:hover {
 
 /* Buttons */
 .btn-primary {
-    background: #005EB8;
+    background: #0B5ED7;
     color: white;
     border: none;
     padding: 10px 22px;
@@ -2776,8 +2776,8 @@ button.action-copy-btn:hover {
 
 .btn-secondary {
     background: white;
-    color: #005EB8;
-    border: 1px solid #005EB8;
+    color: #0B5ED7;
+    border: 1px solid #0B5ED7;
     padding: 10px 22px;
     font-size: 14px;
     font-weight: 600;
@@ -2902,7 +2902,7 @@ button.action-copy-btn:hover {
 
 #change-password-form .form-group input:focus {
     outline: none;
-    border-color: #005EB8;
+    border-color: #0B5ED7;
     box-shadow: 0 0 0 3px rgba(0, 94, 184, 0.1);
 }
 
@@ -3258,7 +3258,7 @@ Mobile admin action row — final grid fix
 /* Admin mode indicator */
 body.admin-mode {
   border-top: none;
-  background: #005EB8;
+  background: #0B5ED7;
 }
 
 body.admin-mode .header,
@@ -3380,6 +3380,227 @@ body.admin-mode .header {
     margin-top: 8px !important;
     font-size: 14px !important;
   }
+}
+
+/* ============================================================
+Guest Entry V7
+============================================================ */
+#appShell.hidden-shell {
+    display: none;
+}
+
+.guest-entry {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: #F5F7FA;
+}
+
+.guest-entry.hidden {
+    display: none !important;
+}
+
+.guest-entry__inner {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.guest-login-card {
+    width: 100%;
+    max-width: 420px;
+    background: #FFFFFF;
+    border: 1px solid #D9E2EC;
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(18,43,69,0.08);
+    padding: 26px 26px 22px;
+}
+
+.guest-login-card__title {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    color: #122B45;
+    line-height: 1.2;
+}
+
+.guest-login-card__subtitle {
+    font-size: 13px;
+    color: #5B6B7A;
+    margin-bottom: 22px;
+    line-height: 1.55;
+}
+
+.guest-login-card__section-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: #122B45;
+}
+
+.guest-field {
+    margin-bottom: 16px;
+}
+
+.guest-label {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.guest-input-group {
+    display: flex;
+    border: 1px solid #D9E2EC;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.guest-input-group:focus-within {
+    border-color: #0B5ED7;
+    box-shadow: 0 0 0 3px rgba(0,94,184,0.1);
+}
+
+.guest-username-input {
+    flex: 1;
+    min-width: 120px;
+    border: none;
+    padding: 0 14px;
+    font-size: 15px;
+    height: 44px;
+    outline: none;
+    color: #122B45;
+    background: #fff;
+    font-family: inherit;
+}
+
+.guest-username-input::placeholder,
+.guest-text-input::placeholder {
+    color: #98A2B3;
+}
+
+.guest-input-suffix {
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    background: #F5F7FA;
+    border-left: 1px solid #E6ECF2;
+    font-size: 13px;
+    color: #7A8594;
+    white-space: nowrap;
+}
+
+.guest-text-input {
+    width: 100%;
+    border: 1px solid #D9E2EC;
+    border-radius: 10px;
+    padding: 0 14px;
+    height: 44px;
+    font-size: 15px;
+    color: #122B45;
+    background: #fff;
+    font-family: inherit;
+}
+
+.guest-text-input:focus {
+    border-color: #0B5ED7;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0,94,184,0.1);
+}
+
+.guest-hint {
+    font-size: 13px;
+    color: #5B6B7A;
+    margin-bottom: 14px;
+    line-height: 1.5;
+}
+
+.guest-form-error {
+    display: none;
+    margin-bottom: 12px;
+    color: #c62828;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.guest-btn-primary {
+    width: 100%;
+    height: 44px;
+    background: #0B5ED7;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.guest-btn-primary:hover {
+    background: #004A93;
+}
+
+.guest-links {
+    display: flex;
+    gap: 18px;
+    margin-top: 14px;
+    font-size: 13px;
+    flex-wrap: wrap;
+}
+
+.guest-links span {
+    color: #0B5ED7;
+    cursor: pointer;
+}
+
+.guest-links span:hover {
+    text-decoration: underline;
+}
+
+.guest-footnote {
+    margin-top: 18px;
+    font-size: 12px;
+    color: #98A2B3;
+    border-top: 1px solid #eee;
+    padding-top: 12px;
+}
+
+.guest-version {
+    text-align: center;
+    font-size: 12px;
+    color: #888;
+    margin-top: 10px;
+}
+
+@media screen and (max-width: 768px) {
+    .guest-entry {
+        padding: 14px;
+    }
+
+    .guest-login-card {
+        max-width: 100%;
+        padding: 22px 20px 20px;
+    }
+}
+
+@media screen and (max-width: 380px) {
+    .guest-input-group {
+        flex-direction: column;
+    }
+
+    .guest-input-suffix {
+        border-left: none;
+        border-top: 1px solid #E6ECF2;
+        justify-content: center;
+        padding: 10px 12px;
+    }
 }
 
 [hidden] {
