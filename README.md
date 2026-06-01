@@ -13,9 +13,9 @@ Internal web application for managing sample inventory, checkout, and return tra
 
 ## Development Setup
 
-PostgreSQL is the default local development database. SQLite is available as a fallback when PostgreSQL is not available.
+PostgreSQL is required. The app no longer supports SQLite.
 
-### PostgreSQL (default, recommended)
+### PostgreSQL (required)
 
 ```bash
 # 1. Start local PostgreSQL
@@ -40,20 +40,11 @@ Then restart the app. `init_db()` recreates all tables and seeds the admin user.
 
 > **Warning:** `DATABASE_URL` must only point to a local PostgreSQL instance (`localhost`/`127.0.0.1`/`::1`). The app refuses remote PostgreSQL hosts in non-production mode. Railway production runtime is exempt from this guard. Never use a Railway production database URL as `DATABASE_URL` for local development.
 
-### SQLite (fallback, no dependencies)
-
-When PostgreSQL is not available, the app falls back to `sample_management.db` (SQLite) automatically if `DATABASE_URL` is unset or empty.
-
-```bash
-pip install -r requirements.txt
-python -m uvicorn main:app --reload
-```
-
 > `.env` is gitignored. Never commit secrets.
 
 ## Cloning Railway PostgreSQL into Local PostgreSQL for Testing
 
-This workflow copies production data from Railway into your local Docker PostgreSQL for testing before Phase 3 (SQLite removal).
+This workflow copies production data from Railway into your local Docker PostgreSQL for testing.
 
 ### Prerequisites
 
@@ -146,6 +137,16 @@ Never commit real credentials into the repository.
 - Ongoing hardening items include session security, CSRF protection, and audit logging.
 
 ## Version History
+
+### V1.6.6
+Focus: retire SQLite — PostgreSQL-only backend
+
+- Removed all `if is_postgres(): ... else: aiosqlite` endpoint branches (54 sites)
+- Removed `is_postgres()`, `placeholder()`, `_get_sync_db()` sqlite fallback
+- Removed `aiosqlite` dependency; `DATABASE_URL` is now required
+- Simplified `init_db()` to PostgreSQL-only DDL
+- Updated README to remove SQLite setup instructions
+- App now requires PostgreSQL for both development and production
 
 ### V1.6.5
 Focus: safe Railway-to-local DB clone utility for testing
