@@ -13,33 +13,41 @@ Internal web application for managing sample inventory, checkout, and return tra
 
 ## Development Setup
 
-### SQLite (quick start, no dependencies)
+PostgreSQL is the default local development database. SQLite is available as a fallback when PostgreSQL is not available.
 
-```bash
-pip install -r requirements.txt
-python -m uvicorn main:app --reload
-```
-
-The app falls back to `sample_management.db` (SQLite) when `DATABASE_URL` is not set.
-
-### PostgreSQL (recommended for production parity)
+### PostgreSQL (default, recommended)
 
 ```bash
 # 1. Start local PostgreSQL
 docker compose up -d
 
-# 2. Create .env with local DB URL
-echo 'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sample_library' > .env
-echo 'APP_ENV=development' >> .env
-echo 'SESSION_SECRET=local-dev-secret-not-for-production' >> .env
-echo 'ADMIN_PASSWORD=a_strong_local_password' >> .env
+# 2. Ensure .env points to local PostgreSQL (see .env.example)
+#    DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sample_library
 
 # 3. Install dependencies and run
 pip install -r requirements.txt
 python -m uvicorn main:app --reload
 ```
 
+#### Resetting the local database
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+Then restart the app. `init_db()` recreates all tables and seeds the admin user.
+
 > **Warning:** `DATABASE_URL` must only point to a local PostgreSQL instance (`localhost`/`127.0.0.1`/`::1`). The app refuses remote PostgreSQL hosts in non-production mode. Railway production runtime is exempt from this guard. Never use a Railway production database URL as `DATABASE_URL` for local development.
+
+### SQLite (fallback, no dependencies)
+
+When PostgreSQL is not available, the app falls back to `sample_management.db` (SQLite) automatically if `DATABASE_URL` is unset or empty.
+
+```bash
+pip install -r requirements.txt
+python -m uvicorn main:app --reload
+```
 
 > `.env` is gitignored. Never commit secrets.
 
@@ -53,14 +61,14 @@ python -m uvicorn main:app --reload
 
 ### Development
 
-For local development only, credentials may be configured through environment variables.
+For local development, credentials are configured in `.env` via environment variables.
 Do not use weak or default passwords in production.
 
-Example:
+Example `.env` values:
 
-```bash
-DEV_ADMIN_USERNAME=admin
-DEV_ADMIN_PASSWORD=change_this_to_a_strong_password
+```env
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change_this_to_a_strong_local_password
 ```
 
 Never commit real credentials into the repository.
@@ -72,10 +80,10 @@ Never commit real credentials into the repository.
 - `POST /api/auth/logout`
 
 ### Sample Library
-- `GET /api/samples`
-- `POST /api/samples` (Admin)
-- `PUT /api/samples/{id}` (Admin)
-- `DELETE /api/samples/{id}` (Admin)
+- `GET /api/items`
+- `POST /api/items` (Admin)
+- `PUT /api/items/{id}` (Admin)
+- `DELETE /api/items/{id}` (Admin)
 
 ### Sample Photo Management
 - `POST /api/items/{id}/photo` (Admin)
@@ -98,6 +106,15 @@ Never commit real credentials into the repository.
 - Ongoing hardening items include session security, CSRF protection, and audit logging.
 
 ## Version History
+
+### V1.6.4
+Focus: PostgreSQL as default local development workflow
+
+- Reordered README: PostgreSQL first as default, SQLite second as fallback
+- Added `.env.example` for standardized onboarding
+- Documented Docker Compose reset workflow
+- Fixed README route naming: `/api/samples` → `/api/items`
+- Fixed README auth examples: `DEV_ADMIN_USERNAME`/`DEV_ADMIN_PASSWORD` → `ADMIN_USERNAME`/`ADMIN_PASSWORD`
 
 ### V1.6.3
 Focus: hotfix — prevent Railway production regression from local DB safety guard
