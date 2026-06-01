@@ -187,19 +187,9 @@ class UserOut(BaseModel):
 
 
 def _get_sync_db():
-    """Get a synchronous database connection (psycopg2 or sqlite3 for dev fallback)."""
+    """Get a synchronous PostgreSQL database connection."""
     database_url = _get_db_url()
-    if is_postgres():
-        return psycopg2.connect(database_url)
-    # For sync context, use sqlite3 instead of aiosqlite
-    import sqlite3
-    return sqlite3.connect("sample_management.db")
-
-
-def is_postgres() -> bool:
-    """Check if PostgreSQL is configured via DATABASE_URL."""
-    database_url = _get_db_url()
-    return database_url.startswith("postgres://") or database_url.startswith("postgresql://")
+    return psycopg2.connect(database_url)
 
 
 def _get_db_url() -> str:
@@ -244,15 +234,6 @@ def _safe_pg_query(query_fn):
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     return _wrapper()
-
-
-def placeholder() -> str:
-    """Return the appropriate placeholder for the active database.
-
-    Returns '%s' for PostgreSQL and '?' for SQLite.
-    """
-    return "%s" if is_postgres() else "?"
-
 
 def _parse_unit_count(value) -> int:
     """Parse UnitCount into a safe positive integer. Fallback to 1."""
@@ -834,7 +815,7 @@ def _get_borrower_identity_conditions(user, email=None):
 
 
 def _identity_where_clause(conditions, params):
-    """Build a WHERE clause from identity conditions, adapting placeholders."""
+    """Build a WHERE clause from identity conditions."""
     if not conditions:
         return "1=0", params
     clause = " OR ".join(f"({c})" for c in conditions)
