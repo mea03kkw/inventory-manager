@@ -3,7 +3,6 @@ Pillow>=11.0.0
 uvicorn[standard]==0.48.0
 pydantic==2.13.4
 psycopg2-binary==2.9.11
-aiosqlite==0.21.0
 python-multipart==0.0.20
 itsdangerous==2.2.0
 gunicorn==23.0.0

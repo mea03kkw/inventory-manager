@@ -18,7 +18,6 @@ from fastapi.responses import JSONResponse, HTMLResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import aiosqlite
 try:
     import psycopg2
 except ImportError:
@@ -206,10 +205,18 @@ def is_postgres() -> bool:
 def _get_db_url() -> str:
     """Get the DATABASE_URL with normalized scheme (postgres:// -> postgresql://).
 
+    Raises RuntimeError if DATABASE_URL is not set — PostgreSQL is required.
     In non-production / non-Railway environments, rejects non-local PostgreSQL
     hosts to prevent accidental connection to remote/production databases.
     """
-    url = os.getenv("DATABASE_URL", "")
+    url = os.getenv("DATABASE_URL", "").strip()
+    if not url:
+        raise RuntimeError(
+            "DATABASE_URL is not set. PostgreSQL is required. "
+            "Set DATABASE_URL to a local PostgreSQL instance "
+            "(e.g., postgresql://postgres:postgres@localhost:5432/sample_library) "
+            "or start the local Docker PostgreSQL with: docker compose up -d"
+        )
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
 
@@ -221,8 +228,7 @@ def _get_db_url() -> str:
             raise RuntimeError(
                 f"Refusing to connect to remote PostgreSQL host '{parsed.hostname}' "
                 "in non-production mode. "
-                "Set DATABASE_URL to a local PostgreSQL instance (localhost/127.0.0.1/::1) "
-                "or unset DATABASE_URL to use the SQLite fallback for local development."
+                "Set DATABASE_URL to a local PostgreSQL instance (localhost/127.0.0.1/::1)."
             )
 
     return url
