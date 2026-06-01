@@ -57,6 +57,9 @@ htmlcov/
 # Logs
 *.log
 
+# Kilo AI
+.kilo/
+
 # OS
 .DS_Store
 Thumbs.db
