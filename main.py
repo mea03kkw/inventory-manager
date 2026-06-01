@@ -1,13 +1,16 @@
 """FastAPI backend for sample management application."""
+
 # ============================================================================
 # Imports & Configuration
 # ============================================================================
 
 import os
+from urllib.parse import urlparse
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Optional, Tuple
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.concurrency import run_in_threadpool
@@ -22,6 +25,11 @@ except ImportError:
     psycopg2 = None
 import csv
 import io
+
+# Railay detection and local .env loading
+_IS_RAILWAY = bool(os.environ.get("RAILWAY_SERVICE_ID"))
+if not _IS_RAILWAY:
+    load_dotenv()
 
 # ============================================================================
 # Photo upload configuration
@@ -196,10 +204,27 @@ def is_postgres() -> bool:
 
 
 def _get_db_url() -> str:
-    """Get the DATABASE_URL with normalized scheme (postgres:// -> postgresql://)."""
+    """Get the DATABASE_URL with normalized scheme (postgres:// -> postgresql://).
+
+    In non-production / non-Railway environments, rejects non-local PostgreSQL
+    hosts to prevent accidental connection to remote/production databases.
+    """
     url = os.getenv("DATABASE_URL", "")
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
+
+    _is_prod = APP_ENV == "production" or (_IS_RAILWAY and not _APP_ENV_RAW)
+    if url and not _is_prod:
+        parsed = urlparse(url)
+        allowed_hosts = {"localhost", "127.0.0.1", "::1", "db", "postgres"}
+        if parsed.hostname and parsed.hostname not in allowed_hosts:
+            raise RuntimeError(
+                f"Refusing to connect to remote PostgreSQL host '{parsed.hostname}' "
+                "in non-production mode. "
+                "Set DATABASE_URL to a local PostgreSQL instance (localhost/127.0.0.1/::1) "
+                "or unset DATABASE_URL to use the SQLite fallback for local development."
+            )
+
     return url
 
 
@@ -395,7 +420,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
 app = FastAPI(
     title="HC R&amp;D Sample Library API",
     description="Backend for sample inventory and checkout tracking.",
-    version="1.6.0",
+    version="1.6.3",
     docs_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/docs",
     redoc_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/redoc",
     openapi_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/openapi.json",
@@ -403,7 +428,8 @@ app = FastAPI(
 
 SESSION_SECRET = os.getenv("SESSION_SECRET", "dev-secret-change-in-production")
 
-APP_ENV = os.getenv("APP_ENV", "development")
+_APP_ENV_RAW = os.getenv("APP_ENV", "")
+APP_ENV = (_APP_ENV_RAW or "development").lower()
 
 SESSION_MAX_AGE_SECONDS = int(os.getenv("SESSION_MAX_AGE_SECONDS", "28800"))
 

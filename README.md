@@ -13,10 +13,35 @@ Internal web application for managing sample inventory, checkout, and return tra
 
 ## Development Setup
 
+### SQLite (quick start, no dependencies)
+
 ```bash
 pip install -r requirements.txt
 python -m uvicorn main:app --reload
 ```
+
+The app falls back to `sample_management.db` (SQLite) when `DATABASE_URL` is not set.
+
+### PostgreSQL (recommended for production parity)
+
+```bash
+# 1. Start local PostgreSQL
+docker compose up -d
+
+# 2. Create .env with local DB URL
+echo 'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sample_library' > .env
+echo 'APP_ENV=development' >> .env
+echo 'SESSION_SECRET=local-dev-secret-not-for-production' >> .env
+echo 'ADMIN_PASSWORD=a_strong_local_password' >> .env
+
+# 3. Install dependencies and run
+pip install -r requirements.txt
+python -m uvicorn main:app --reload
+```
+
+> **Warning:** `DATABASE_URL` must only point to a local PostgreSQL instance (`localhost`/`127.0.0.1`/`::1`). The app refuses remote PostgreSQL hosts in non-production mode. Railway production runtime is exempt from this guard. Never use a Railway production database URL as `DATABASE_URL` for local development.
+
+> `.env` is gitignored. Never commit secrets.
 
 ## Authentication
 
@@ -74,14 +99,29 @@ Never commit real credentials into the repository.
 
 ## Version History
 
+### V1.6.3
+Focus: hotfix — prevent Railway production regression from local DB safety guard
+
+- Fixed critical production regression: safety guard no longer blocks Railway startup (detected via `RAILWAY_SERVICE_ID`)
+- Normalized `APP_ENV` with case-insensitive handling (`production`/`Production`/`PRODUCTION`)
+- Gated `load_dotenv()` behind non-Railway check to prevent accidental `.env` loading in deployed environments
+- Added `::1` (IPv6 loopback) to local PostgreSQL host whitelist
+
+### V1.6.2
+Focus: safe local PostgreSQL development
+
+- Added `python-dotenv` for local `.env` loading
+- Added whitelist-based safety guard that blocks remote PostgreSQL hosts in non-production mode
+- Added `docker-compose.yml` for local PostgreSQL (Docker)
+- Updated `.env` with local development values (production URL removed)
+- Documented local PostgreSQL setup in README
+
 ### V1.6.1
 Focus: Railway build fix and security cleanup
 
 - Fixed Railway build failure by replacing exact Python pin `python-3.11.9` with `python-3.11` in `runtime.txt`
 - Removed tracked sensitive files (`seed_dummy_inventory.py`, `SampleLibrary_Data.xlsx`) from repository
 - Updated `.gitignore` to exclude Excel files and uploads directory
-Focus: guest login V7, photo thumbnails, app rename
-
 - Full-page V7 guest login entry replacing modal-only login
 - Desktop table Photo column with 36x36 thumbnails
 - Mobile card left-thumbnail photo preview (52x52)
@@ -143,7 +183,9 @@ Initial release
 ## Deployment Notes
 
 - Hosted on Railway
-- PostgreSQL database
+- PostgreSQL database (production)
+- Set `APP_ENV=production` on Railway for correct session cookie security (`https_only`) and production guard behavior. The PostgreSQL safety guard is automatically bypassed on Railway regardless, but `APP_ENV=production` is needed for other production hardening.
+- `docker-compose.yml` provided for local PostgreSQL only — the app itself is not Dockerized
 - Manual deploy is recommended for controlled release management
 
 ## Important
