@@ -74,7 +74,12 @@ Never commit real credentials into the repository.
 
 ## Version History
 
-### V1.6
+### V1.6.1
+Focus: Railway build fix and security cleanup
+
+- Fixed Railway build failure by replacing exact Python pin `python-3.11.9` with `python-3.11` in `runtime.txt`
+- Removed tracked sensitive files (`seed_dummy_inventory.py`, `SampleLibrary_Data.xlsx`) from repository
+- Updated `.gitignore` to exclude Excel files and uploads directory
 Focus: guest login V7, photo thumbnails, app rename
 
 - Full-page V7 guest login entry replacing modal-only login

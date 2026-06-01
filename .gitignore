@@ -8,6 +8,13 @@ __pycache__/
 *.db
 *.db-journal
 
+# Excel data files
+*.xlsx
+*.xls
+
+# Uploads
+uploads/
+
 # Environments
 .env
 .venv
