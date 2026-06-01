@@ -51,6 +51,46 @@ python -m uvicorn main:app --reload
 
 > `.env` is gitignored. Never commit secrets.
 
+## Cloning Railway PostgreSQL into Local PostgreSQL for Testing
+
+This workflow copies production data from Railway into your local Docker PostgreSQL for testing before Phase 3 (SQLite removal).
+
+### Prerequisites
+
+- Docker Compose PostgreSQL running locally (`docker compose up -d`)
+- `pg_dump` and `pg_restore` installed on your machine
+- `RAILWAY_DATABASE_URL` set in `.env` (the Railway production PostgreSQL URL)
+- `DATABASE_URL` in `.env` pointing to the local Docker PostgreSQL
+
+### Warning
+
+- This is a **read-only operation** against Railway. No production data is modified.
+- The restore **overwrites** the local PostgreSQL database. Run `docker compose down -v && docker compose up -d` first if you want a clean reset.
+- **Never commit `RAILWAY_DATABASE_URL`** or dump files. The `tmp/` and `*.dump` patterns are in `.gitignore`.
+
+### Workflow
+
+```bash
+# 1. Ensure local PostgreSQL is running
+docker compose up -d
+
+# 2. Set RAILWAY_DATABASE_URL in .env (never in code)
+#    RAILWAY_DATABASE_URL=postgresql://user:pass@host:port/db
+
+# 3. Run the clone script
+python scripts/clone_railway_to_local.py
+
+# 4. Restart the local app
+python -m uvicorn main:app --reload
+```
+
+The script validates:
+- It is not running on Railway itself
+- The source URL is a remote host (not localhost)
+- The target URL is a local host
+- `pg_dump` and `pg_restore` are available
+- The dump file is cleaned up after restore
+
 ## Authentication
 
 ### Production
@@ -106,6 +146,15 @@ Never commit real credentials into the repository.
 - Ongoing hardening items include session security, CSRF protection, and audit logging.
 
 ## Version History
+
+### V1.6.5
+Focus: safe Railway-to-local DB clone utility for testing
+
+- Added `scripts/clone_railway_to_local.py` — manual utility to copy Railway PostgreSQL into local Docker PostgreSQL
+- Added safety guards: refuses Railway runtime, validates source is remote, target is local
+- Added `tmp/` and `*.dump` to `.gitignore` to prevent accidental dump commits
+- Updated `.env.example` with clarified `RAILWAY_DATABASE_URL` documentation
+- Documented clone workflow in README
 
 ### V1.6.4
 Focus: PostgreSQL as default local development workflow
