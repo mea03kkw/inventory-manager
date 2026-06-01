@@ -505,6 +505,88 @@ def init_db():
             value TEXT NOT NULL
         )
     """)
+    conn.commit()
+
+    # Seed minimal development users if table is empty
+    cur.execute("SELECT COUNT(*) FROM users")
+    user_count = cur.fetchone()[0]
+    if user_count == 0:
+        admin_password = os.getenv("ADMIN_PASSWORD", "")
+        if admin_password and admin_password != "admin123":
+            admin_username = os.getenv("ADMIN_USERNAME", "admin")
+            ph, salt_val = hash_password(admin_password)
+            cur.execute(
+                "INSERT INTO users (username, password_hash, salt, display_name, is_admin, is_active) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (admin_username, ph, salt_val, "System Administrator", True, True),
+            )
+            print("[INIT] Bootstrap admin created from ADMIN_PASSWORD env var")
+        else:
+            print("[INIT] No bootstrap admin created — set ADMIN_PASSWORD env var (not 'admin123') to create one")
+
+    # Create inventory and checkout_records tables
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            id SERIAL PRIMARY KEY,
+            item_number INTEGER NOT NULL DEFAULT 0,
+            value BOOLEAN NOT NULL DEFAULT FALSE
+        )
+    """)
+    for field in ALL_FIELDS:
+        cur.execute(f'ALTER TABLE inventory ADD COLUMN IF NOT EXISTS "{field}" TEXT')
+    cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS "Status" TEXT DEFAULT \'IN_STOCK\'')
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS checkout_records (
+            id SERIAL PRIMARY KEY,
+            sample_id INTEGER NOT NULL REFERENCES inventory(id),
+            borrower_name TEXT NOT NULL DEFAULT '',
+            borrower_department TEXT NOT NULL DEFAULT '',
+            borrower_email TEXT NOT NULL DEFAULT '',
+            checkout_date TEXT NOT NULL DEFAULT '',
+            expected_return_date TEXT NOT NULL DEFAULT '',
+            actual_return_date TEXT NOT NULL DEFAULT '',
+            checkout_remarks TEXT NOT NULL DEFAULT '',
+            return_remarks TEXT NOT NULL DEFAULT '',
+            checkout_status TEXT NOT NULL DEFAULT 'OUT',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            sample_title TEXT,
+            sample_serial TEXT,
+            sample_type TEXT,
+            storage_location_code TEXT DEFAULT '',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS sample_title TEXT')
+    cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS sample_serial TEXT')
+    cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS sample_type TEXT')
+    cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS storage_location_code TEXT DEFAULT \'\'')
+    cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+    cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1')
+    cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS available_quantity INTEGER DEFAULT 1')
+    cur.execute('ALTER TABLE checkout_records ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1')
+    cur.execute("UPDATE inventory SET quantity = 1 WHERE quantity IS NULL")
+    cur.execute("UPDATE checkout_records SET quantity = 1 WHERE quantity IS NULL")
+    cur.execute("""
+        UPDATE inventory
+        SET quantity = CASE
+            WHEN NULLIF(TRIM(COALESCE("UnitCount", '')), '') IS NOT NULL
+                 AND TRIM(COALESCE("UnitCount", '')) ~ '^[0-9]+$'
+                 AND CAST(TRIM("UnitCount") AS INTEGER) > 0
+            THEN CAST(TRIM("UnitCount") AS INTEGER)
+            ELSE quantity
+        END
+        WHERE quantity IS NULL OR quantity = 1
+    """)
+    cur.execute("UPDATE inventory SET available_quantity = quantity WHERE available_quantity IS NULL")
+    cur.execute("UPDATE inventory SET available_quantity = quantity WHERE available_quantity > quantity")
+    cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_original_name TEXT')
+    cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_uploaded_at TEXT')
+    cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_uploaded_by INTEGER')
+    cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_size_bytes INTEGER')
+
+    conn.commit()
+    conn.close()
+    print("[INIT] Database initialization complete")
 # ============================================================================
 # Async startup wrapper to avoid blocking the event loop
 # ============================================================================
