@@ -1074,13 +1074,15 @@ function renderItems() {
         }
         var statusText = getDisplayStatusText(item);
         var statusClass = getDisplayStatusClass(item);
-        return '\n            <tr onclick="viewItem(' + item.id + ')" style="cursor:pointer;">\n                <td class="photo-col-cell">' + (item.PhotoLink ? '<img class="table-photo-thumb" src="' + API.photoGet(item.id) + '" alt="">' : '') + '</td>\n                <td>' + escapeHtml(item.Title || '') + '</td>\n                <td>' + escapeHtml(item.SerialNum || '') + '</td>\n                <td>' + escapeHtml(item.SampleType || '') + '</td>\n                <td>' + escapeHtml(item.StorageLocationCode || '') + '</td>\n                <td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>\n                <td>' + actionCellHtml + '</td>\n            </tr>\n        ';
+        return '\n            <tr onclick="viewItem(' + item.id + ')" style="cursor:pointer;">\n                <td class="photo-col-cell">' + (item.PhotoLink ? '<img class="table-photo-thumb" src="' + API.photoGet(item.id) + '" alt="">' : '') + '</td>\n                <td>' + escapeHtml(item.ProductName || item.Title || '') + '</td>\n                <td>' + escapeHtml(item.SerialNum || '') + '</td>\n                <td>' + escapeHtml(item.Brand || '') + '</td>\n                <td>' + escapeHtml(item.Category || '') + '</td>\n                <td>' + escapeHtml(item.SampleType || '') + '</td>\n                <td>' + escapeHtml(item.StorageLocationCode || '') + '</td>\n                <td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>\n                <td>' + actionCellHtml + '</td>\n            </tr>\n        ';
     }).join('');
 
     if (cardsContainer) {
         cardsContainer.innerHTML = allItems.map(item => {
             const status = normalizeStatus(item.status || item.Status);
             var metaParts = [];
+            if (item.Brand) metaParts.push(item.Brand);
+            if (item.Category) metaParts.push(item.Category);
             if (item.StorageLocationCode) metaParts.push(item.StorageLocationCode);
             if (item.SampleType) metaParts.push(item.SampleType);
             var metaHtml = metaParts.length > 0
@@ -1093,9 +1095,9 @@ function renderItems() {
 
             var cardHtml;
             if (item.PhotoLink) {
-                cardHtml = '\n<div class="inventory-card inventory-card-photo" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__photo-layout">\n    <div class="inventory-card__thumb-wrap"><img class="mobile-card-thumb" src="' + API.photoGet(item.id) + '" alt=""></div>\n    <div class="inventory-card__photo-content">\n      <div class="inventory-card__identity">\n        <div class="inventory-card__title">' + escapeHtml(item.Title || '') + '</div>\n        <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n      </div>\n      <div class="inventory-card__status-row">\n        <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n        ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n      </div>\n      ' + metaHtml + '\n    </div>\n  </div>\n</div>';
+                cardHtml = '\n<div class="inventory-card inventory-card-photo" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__photo-layout">\n    <div class="inventory-card__thumb-wrap"><img class="mobile-card-thumb" src="' + API.photoGet(item.id) + '" alt=""></div>\n    <div class="inventory-card__photo-content">\n      <div class="inventory-card__identity">\n        <div class="inventory-card__title">' + escapeHtml(item.ProductName || item.Title || '') + '</div>\n        <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n      </div>\n      <div class="inventory-card__status-row">\n        <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n        ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n      </div>\n      ' + metaHtml + '\n    </div>\n  </div>\n</div>';
             } else {
-                cardHtml = '\n<div class="inventory-card" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__identity">\n    <div class="inventory-card__title">' + escapeHtml(item.Title || '') + '</div>\n    <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n  </div>\n  <div class="inventory-card__status-row">\n    <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n    ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n  </div>\n  ' + metaHtml + '\n</div>';
+                cardHtml = '\n<div class="inventory-card" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__identity">\n    <div class="inventory-card__title">' + escapeHtml(item.ProductName || item.Title || '') + '</div>\n    <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n  </div>\n  <div class="inventory-card__status-row">\n    <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n    ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n  </div>\n  ' + metaHtml + '\n</div>';
             }
             return cardHtml;
         }).join('');
@@ -1155,13 +1157,16 @@ function exportSamplesCsv() {
 // Create / Edit / Delete
 // ============================================================
 
-const REQUIRED_FIELDS = ['Title', 'SerialNum', 'SampleType', 'StorageLocationCode'];
+const REQUIRED_FIELDS = ['ProductName', 'Brand', 'Model', 'Category', 'Environment', 'UnitCount', 'DateReceived'];
 
 const FIELD_LABELS = {
-    Title: 'Title',
-    SerialNum: 'Serial Number',
-    SampleType: 'Sample Type',
-    StorageLocationCode: 'Storage Rack'
+    ProductName: 'Product Name',
+    Brand: 'Brand',
+    Model: 'Model',
+    Category: 'Category',
+    Environment: 'Box Number',
+    UnitCount: 'Unit Count',
+    DateReceived: 'Date Received'
 };
 
 function clearFieldValidation() {
@@ -1200,6 +1205,15 @@ function validateItemForm() {
             if (!firstInvalid) firstInvalid = el;
         }
     }
+    // Validate UnitCount is numeric
+    var ucEl = document.getElementById('UnitCount');
+    if (ucEl && ucEl.value) {
+        var uc = parseInt(ucEl.value, 10);
+        if (isNaN(uc) || uc <= 0) {
+            markFieldInvalid('UnitCount', 'Unit Count must be a positive number');
+            if (!firstInvalid) firstInvalid = ucEl;
+        }
+    }
     if (firstInvalid) {
         firstInvalid.focus();
         return false;
@@ -1208,17 +1222,28 @@ function validateItemForm() {
 }
 
 function normalizeItemFormData() {
-    // Trim all text fields and normalize UnitCount to string
     FIELD_LIST.forEach(function(f) {
         var el = document.getElementById(f);
         if (el && el.type !== 'select-one') {
             el.value = (el.value || '').trim();
         }
     });
-    // Ensure UnitCount is preserved as string-compatible
     var ucEl = document.getElementById('UnitCount');
     if (ucEl && ucEl.value !== '') {
-        ucEl.value = String(ucEl.value);
+        ucEl.value = String(parseInt(ucEl.value, 10) || 1);
+    }
+    // Sync generated fields to the legacy field names for backend compatibility
+    var synced = {
+        Title: 'ProductName',
+        SerialNum: 'serial_num_display',
+        SampleType: 'sample_type_display'
+    };
+    for (var dest in synced) {
+        var srcEl = document.getElementById(synced[dest]);
+        var destEl = document.getElementById(dest);
+        if (srcEl && srcEl.value && destEl) {
+            destEl.value = srcEl.value;
+        }
     }
 }
 
@@ -1226,7 +1251,7 @@ const FIELD_LIST = [
     "Title", "SerialNum", "SampleType", "ProductName", "Brand", "Model",
     "Category", "SubCategory", "DepartmentOwner", "Condition", "DateReceived",
     "StorageLocationCode", "UnitCount", "UnitMeasure", "Status", "PhotoLink",
-    "Notes", "Column1", "Attachments"
+    "Notes", "Column1", "Attachments", "sample_code", "record_state", "Environment"
 ];
 
 function clearForm() {
@@ -1238,6 +1263,13 @@ function clearForm() {
             else el.value = '';
         }
     });
+    // Also clear generated preview fields
+    var sc = document.getElementById('sample_code');
+    if (sc) sc.value = '';
+    var sn = document.getElementById('serial_num_display');
+    if (sn) sn.value = '';
+    var st = document.getElementById('sample_type_display');
+    if (st) st.value = '';
     // Default status to IN_STOCK
     const statusEl = document.getElementById('Status');
     if (statusEl) statusEl.value = 'IN_STOCK';
@@ -1253,6 +1285,13 @@ function fillForm(item) {
             el.value = val;
         }
     });
+    // Populate the displayed generated fields
+    var sc = document.getElementById('sample_code');
+    if (sc) sc.value = item.sample_code || '';
+    var sn = document.getElementById('serial_num_display');
+    if (sn) sn.value = item.SerialNum || '';
+    var st = document.getElementById('sample_type_display');
+    if (st) st.value = item.SampleType || '';
 }
 
 function showAddForm() {
@@ -1265,9 +1304,25 @@ function showAddForm() {
     editingId = null;
     document.getElementById('formTitle').textContent = 'Add New Sample';
     document.getElementById('submitBtn').textContent = 'Add Sample';
+    
+    // Load master data dropdowns
+    loadMasterData();
+    
+    // Attach live preview listeners (only once)
+    var brandEl = document.getElementById('Brand');
+    var dateEl = document.getElementById('DateReceived');
+    if (brandEl && !brandEl._livePreviewAttached) {
+        brandEl.addEventListener('input', updateLivePreview);
+        brandEl._livePreviewAttached = true;
+    }
+    if (dateEl && !dateEl._livePreviewAttached) {
+        dateEl.addEventListener('change', updateLivePreview);
+        dateEl._livePreviewAttached = true;
+    }
+    
     openModal('addModal');
     setTimeout(function() {
-        var titleEl = document.getElementById('Title');
+        var titleEl = document.getElementById('ProductName');
         if (titleEl) titleEl.focus();
     }, 100);
 }
@@ -1308,9 +1363,24 @@ function startEdit(id) {
         if (photoRemoveBtn) photoRemoveBtn.style.display = 'none';
     }
 
+    // Load master data for dropdowns
+    loadMasterData();
+
+    // Attach live preview listeners
+    var brandEl = document.getElementById('Brand');
+    var dateEl = document.getElementById('DateReceived');
+    if (brandEl && !brandEl._livePreviewAttached) {
+        brandEl.addEventListener('input', updateLivePreview);
+        brandEl._livePreviewAttached = true;
+    }
+    if (dateEl && !dateEl._livePreviewAttached) {
+        dateEl.addEventListener('change', updateLivePreview);
+        dateEl._livePreviewAttached = true;
+    }
+
     openModal('addModal');
     setTimeout(function() {
-        var titleEl = document.getElementById('Title');
+        var titleEl = document.getElementById('ProductName');
         if (titleEl) titleEl.focus();
     }, 100);
 }
@@ -1330,6 +1400,108 @@ function cancelEdit() {
     var photoInput = document.getElementById('photoInput');
     if (photoInput) photoInput.value = '';
     closeModal();
+}
+
+// ============================================================
+// Master data loading
+// ============================================================
+
+async function loadMasterData() {
+    // Load departments
+    var deptSelect = document.getElementById('DepartmentOwner');
+    if (deptSelect && deptSelect.options.length <= 1) {
+        try {
+            var res = await fetch('/api/master/departments');
+            var depts = await res.json();
+            depts.forEach(function(d) {
+                var opt = document.createElement('option');
+                opt.value = d.code;
+                opt.textContent = d.name;
+                deptSelect.appendChild(opt);
+            });
+        } catch (e) {
+            console.error('Failed to load departments:', e);
+        }
+    }
+    // Load storage locations
+    var locSelect = document.getElementById('StorageLocationCode');
+    if (locSelect && locSelect.options.length <= 1) {
+        try {
+            var res = await fetch('/api/master/storage-locations');
+            var locs = await res.json();
+            locs.forEach(function(l) {
+                var opt = document.createElement('option');
+                opt.value = l.code;
+                opt.textContent = l.code;
+                locSelect.appendChild(opt);
+            });
+        } catch (e) {
+            console.error('Failed to load storage locations:', e);
+        }
+    }
+    // Load categories
+    var catSelect = document.getElementById('Category');
+    if (catSelect && catSelect.options.length <= 1) {
+        try {
+            var res = await fetch('/api/master/categories');
+            var cats = await res.json();
+            cats.forEach(function(c) {
+                var opt = document.createElement('option');
+                opt.value = c.name;
+                opt.textContent = c.name;
+                catSelect.appendChild(opt);
+            });
+        } catch (e) {
+            console.error('Failed to load categories:', e);
+        }
+    }
+}
+
+// ============================================================
+// Live preview for generated fields
+// ============================================================
+
+async function updateLivePreview() {
+    var brand = (document.getElementById('Brand').value || '').trim();
+    var dateReceived = document.getElementById('DateReceived').value;
+    
+    var scEl = document.getElementById('sample_code');
+    var snEl = document.getElementById('serial_num_display');
+    var stEl = document.getElementById('sample_type_display');
+    
+    if (!brand || !dateReceived) {
+        if (stEl) stEl.value = '';
+        if (scEl) scEl.value = '';
+        if (snEl) snEl.value = '';
+        return;
+    }
+    
+    // Client-side preview of SampleType
+    var sampleType = brand.toLowerCase() === 'philips' ? 'Philips' : 'Competitor';
+    if (stEl) stEl.value = sampleType;
+    
+    // If we have an editing ID or active draft, try getting the real generated code from backend
+    var id = editingId || (document.getElementById('itemId').value ? parseInt(document.getElementById('itemId').value) : null);
+    if (id) {
+        try {
+            var res = await fetch('/api/items/' + id);
+            if (res.ok) {
+                var item = await res.json();
+                if (scEl && item.sample_code) scEl.value = item.sample_code;
+                if (snEl && item.SerialNum) snEl.value = item.SerialNum;
+                if (stEl && item.SampleType) stEl.value = item.SampleType;
+                return;
+            }
+        } catch (e) {
+            // Fall through to client-side preview
+        }
+    }
+    
+    // Client-side preview (approximate - real code uses DB ID)
+    var prefix = sampleType === 'Philips' ? 'PHI' : 'CMT';
+    var year = dateReceived.substring(0, 4);
+    if (scEl) scEl.value = prefix + year + '-????';
+    if (snEl) snEl.value = year + '????';
 }
 
 // ============================================================
@@ -1855,18 +2027,20 @@ async function viewItem(id) {
         var stockBadgeHtml = '<span class="status-badge ' + stockStatusClass + '">' + stockStatusText + '</span>';
 
         var compactGridHtml = '<div class="sample-details-compact-grid">';
-        compactGridHtml += detailItem('Title', escapeHtml(item.Title || ''));
-        compactGridHtml += detailItem('Serial Number', escapeHtml(item.SerialNum || ''));
+        compactGridHtml += detailItem('Product Name', escapeHtml(item.ProductName || item.Title || ''));
+        compactGridHtml += detailItem('Sample Code', escapeHtml(item.sample_code || item.SerialNum || ''));
         compactGridHtml += detailItem('Sample Type', escapeHtml(item.SampleType || ''));
-        compactGridHtml += detailItem('Storage Rack', escapeHtml(item.StorageLocationCode || ''));
-        compactGridHtml += detailItem('Category', escapeHtml(item.Category || ''));
-        compactGridHtml += detailItem('Sub Category', escapeHtml(item.SubCategory || ''));
+        compactGridHtml += detailItem('Serial Number', escapeHtml(item.SerialNum || ''));
         compactGridHtml += detailItem('Brand', escapeHtml(item.Brand || ''));
         compactGridHtml += detailItem('Model', escapeHtml(item.Model || ''));
+        compactGridHtml += detailItem('Category', escapeHtml(item.Category || ''));
+        compactGridHtml += detailItem('Sub Category', escapeHtml(item.SubCategory || ''));
         compactGridHtml += detailItem('Department Owner', escapeHtml(item.DepartmentOwner || ''));
         compactGridHtml += detailItem('Condition', escapeHtml(item.Condition || ''));
         compactGridHtml += detailItem('Date Received', item.DateReceived ? escapeHtml(item.DateReceived) : '');
-        compactGridHtml += detailItem('Unit Measure', escapeHtml(item.UnitMeasure || ''));
+        compactGridHtml += detailItem('Storage Rack', escapeHtml(item.StorageLocationCode || ''));
+        compactGridHtml += detailItem('Box Number', escapeHtml(item.Environment || ''));
+        compactGridHtml += detailItem('Unit Count', escapeHtml(item.UnitCount || ''));
         compactGridHtml += detailItem('Stock', stockBadgeHtml);
         compactGridHtml += detailItem('Notes', escapeHtml(item.Notes || ''), true, true);
 

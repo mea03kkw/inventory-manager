@@ -64,6 +64,14 @@ ALL_FIELDS = [
     "PhotoLink",
 ]
 
+NEW_FIELDS_V2 = [
+    "sample_code",
+    "record_state",
+    "Environment",
+]
+
+ALL_FIELDS_V2 = ALL_FIELDS + NEW_FIELDS_V2
+
 _FIELD_NORMALIZE_MAP = {
     "title": "Title",
     "serialnum": "SerialNum",
@@ -84,6 +92,9 @@ _FIELD_NORMALIZE_MAP = {
     "notes": "Notes",
     "photolink": "PhotoLink",
     "status": "Status",
+    "sample_code": "sample_code",
+    "record_state": "record_state",
+    "environment": "Environment",
 }
 
 PASSTHROUGH_KEYS = {
@@ -95,6 +106,7 @@ PASSTHROUGH_KEYS = {
     "checkout_date", "expected_return_date", "actual_return_date",
     "checkout_status", "checkout_remarks", "return_remarks",
     "storage_location_code", "created_at", "updated_at",
+    "sample_code", "record_state",
 }
 
 def _normalize_item_row(row_dict):
@@ -229,6 +241,33 @@ def _parse_unit_count(value) -> int:
         return parsed if parsed > 0 else 1
     except (TypeError, ValueError):
         return 1
+
+# ============================================================================
+# V2 generation logic helpers
+# ============================================================================
+
+def _normalize_brand(raw: Optional[str]) -> str:
+    return (raw or "").strip()
+
+def _derive_sample_type(brand: str) -> str:
+    return "Philips" if _normalize_brand(brand).lower() == "philips" else "Competitor"
+
+def _derive_prefix(sample_type: str) -> str:
+    return "PHI" if sample_type == "Philips" else "CMT"
+
+def _extract_year(date_received: Optional[str]) -> str:
+    if not date_received:
+        return ""
+    try:
+        return str(date.fromisoformat(date_received).year)
+    except (ValueError, TypeError):
+        return ""
+
+def _generate_sample_code(prefix: str, year: str, db_id: int) -> str:
+    return f"{prefix}{year}-{db_id:04d}"
+
+def _derive_serial_num(sample_code: str) -> str:
+    return sample_code[3:].replace("-", "")
 
 # ============================================================================
 # Photo file helpers
@@ -516,6 +555,8 @@ def init_db():
     """)
     for field in ALL_FIELDS:
         cur.execute(f'ALTER TABLE inventory ADD COLUMN IF NOT EXISTS "{field}" TEXT')
+    for field in NEW_FIELDS_V2:
+        cur.execute(f'ALTER TABLE inventory ADD COLUMN IF NOT EXISTS "{field}" TEXT')
     cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS "Status" TEXT DEFAULT \'IN_STOCK\'')
     cur.execute("""
         CREATE TABLE IF NOT EXISTS checkout_records (
@@ -566,6 +607,84 @@ def init_db():
     cur.execute("UPDATE inventory SET available_quantity = quantity WHERE available_quantity IS NULL")
     cur.execute("UPDATE inventory SET available_quantity = quantity WHERE available_quantity > quantity")
 
+    # Master tables for V2 redesign
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS department_master (
+            dept_code   VARCHAR(10) PRIMARY KEY,
+            dept_name   VARCHAR(100) NOT NULL,
+            is_active   BOOLEAN DEFAULT TRUE,
+            sort_order  INTEGER DEFAULT 0
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS storage_location_master (
+            location_code VARCHAR(50) PRIMARY KEY,
+            is_active     BOOLEAN DEFAULT TRUE,
+            sort_order    INTEGER DEFAULT 0
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS category_master (
+            category_name VARCHAR(100) PRIMARY KEY,
+            is_active     BOOLEAN DEFAULT TRUE,
+            sort_order    INTEGER DEFAULT 0
+        )
+    """)
+    # Seed default master data if empty
+    cur.execute("SELECT COUNT(*) FROM department_master")
+    if cur.fetchone()[0] == 0:
+        departments = [
+            ('RD', 'R&D', 1),
+            ('PRC', 'PRC', 2),
+            ('CMM', 'CMM', 3),
+            ('PMO', 'PMO', 4),
+            ('OTH', 'Others', 5),
+        ]
+        cur.executemany(
+            "INSERT INTO department_master (dept_code, dept_name, sort_order) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+            departments,
+        )
+    cur.execute("SELECT COUNT(*) FROM storage_location_master")
+    if cur.fetchone()[0] == 0:
+        locations = [
+            ('HK10F-Aa', 1),
+            ('HK10F-Ab', 2),
+            ('HK10F-Ac', 3),
+            ('HK10F-Ba', 4),
+            ('HK10F-Bb', 5),
+            ('HK10F-Bc', 6),
+            ('Draw out', 7),
+        ]
+        cur.executemany(
+            "INSERT INTO storage_location_master (location_code, sort_order) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            locations,
+        )
+    cur.execute("SELECT COUNT(*) FROM category_master")
+    if cur.fetchone()[0] == 0:
+        categories = [
+            ('Dryer', 1),
+            ('Styler', 2),
+            ('Straightener', 3),
+            ('Brush & Massager', 4),
+            ('Others', 5),
+        ]
+        cur.executemany(
+            "INSERT INTO category_master (category_name, sort_order) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            categories,
+        )
+
+    # Unique constraints for V2 identity fields
+    cur.execute(
+        "SELECT to_regclass('public.uq_sample_code')"
+    )
+    if cur.fetchone()[0] is None:
+        cur.execute("ALTER TABLE inventory ADD CONSTRAINT uq_sample_code UNIQUE (sample_code)")
+    cur.execute(
+        "SELECT to_regclass('public.uq_serial_num')"
+    )
+    if cur.fetchone()[0] is None:
+        cur.execute('ALTER TABLE inventory ADD CONSTRAINT uq_serial_num UNIQUE ("SerialNum")')
+
     # Photo metadata columns for PostgreSQL
     cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_original_name TEXT')
     cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_uploaded_at TEXT')
@@ -602,6 +721,49 @@ if os.getenv("RUN_INIT_DB_ON_IMPORT", "0") == "1":
 def health_check():
     """Health check endpoint."""
     return JSONResponse({"status": "ok"})
+
+# ============================================================================
+# Master data endpoints (V2)
+# ============================================================================
+
+@app.get("/api/master/departments")
+async def get_departments():
+    """List active departments from master data."""
+    database_url = _get_db_url()
+    def _query():
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        cur.execute("SELECT dept_code, dept_name FROM department_master WHERE is_active = TRUE ORDER BY sort_order")
+        rows = cur.fetchall()
+        conn.close()
+        return [{"code": r[0], "name": r[1]} for r in rows]
+    return await _safe_pg_query(_query)
+
+@app.get("/api/master/storage-locations")
+async def get_storage_locations():
+    """List active storage locations from master data."""
+    database_url = _get_db_url()
+    def _query():
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        cur.execute("SELECT location_code FROM storage_location_master WHERE is_active = TRUE ORDER BY sort_order")
+        rows = cur.fetchall()
+        conn.close()
+        return [{"code": r[0]} for r in rows]
+    return await _safe_pg_query(_query)
+
+@app.get("/api/master/categories")
+async def get_categories():
+    """List active categories from master data."""
+    database_url = _get_db_url()
+    def _query():
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        cur.execute("SELECT category_name FROM category_master WHERE is_active = TRUE ORDER BY sort_order")
+        rows = cur.fetchall()
+        conn.close()
+        return [{"name": r[0]} for r in rows]
+    return await _safe_pg_query(_query)
 
 # ============================================================================
 # Auth Routes
@@ -1380,13 +1542,13 @@ async def list_items(
         sql = """
             SELECT i.*
             FROM inventory i
-            WHERE 1=1
+            WHERE (i."record_state" IS NULL OR i."record_state" != 'CANCELLED')
         """
         params = []
         if search:
-            sql += ' AND (i."Title" ILIKE %s OR i."SerialNum" ILIKE %s OR i."SampleType" ILIKE %s)'
+            sql += ' AND (i."Title" ILIKE %s OR i."SerialNum" ILIKE %s OR i."SampleType" ILIKE %s OR i."ProductName" ILIKE %s OR i."Brand" ILIKE %s OR i."Model" ILIKE %s)'
             like = f"%{search}%"
-            params.extend([like, like, like])
+            params.extend([like, like, like, like, like, like])
         if status:
             sql += ' AND i."Status" = %s'
             params.append(status)
@@ -1419,7 +1581,7 @@ async def export_items_csv(
         sql = """
             SELECT i.*
             FROM inventory i
-            WHERE 1=1
+            WHERE (i."record_state" IS NULL OR i."record_state" != 'CANCELLED')
         """
         params = []
         if search:
@@ -1543,6 +1705,9 @@ class ItemIn(BaseModel):
     Notes: Optional[str] = None
     PhotoLink: Optional[str] = None
     Status: Optional[str] = None
+    sample_code: Optional[str] = None
+    record_state: Optional[str] = None
+    Environment: Optional[str] = None
 
 @app.post("/api/items")
 async def create_item(request: Request, payload: ItemIn):
@@ -1557,12 +1722,30 @@ async def create_item(request: Request, payload: ItemIn):
     total_quantity = _parse_unit_count(payload.UnitCount)
     status = payload.Status or "IN_STOCK"
 
-    field_list = [f for f in ALL_FIELDS]
+    field_list = [f for f in ALL_FIELDS_V2]
     values = []
+
+    # Auto-generate the identity fields from brand and date_received
+    brand_raw = getattr(payload, "Brand", None) or ""
+    date_raw = getattr(payload, "DateReceived", None) or ""
+    brand_clean = _normalize_brand(brand_raw)
+    sample_type = _derive_sample_type(brand_clean)
+    prefix = _derive_prefix(sample_type)
+    year = _extract_year(date_raw)
 
     placeholders = ["%s"] * (len(field_list) + 3)
     for field in field_list:
-        values.append(getattr(payload, field, None))
+        if field == "SampleType":
+            values.append(sample_type)
+        elif field == "record_state":
+            values.append("ACTIVE")
+        else:
+            val = getattr(payload, field, None)
+            # For sample_code and SerialNum, compute after insert (need ID)
+            if field in ("sample_code", "SerialNum"):
+                values.append(None)
+            else:
+                values.append(val)
 
     values.append(status)
     values.append(total_quantity)
@@ -1577,6 +1760,14 @@ async def create_item(request: Request, payload: ItemIn):
         cur = conn.cursor()
         cur.execute(f"INSERT INTO inventory ({field_sql}) VALUES ({placeholder_sql}) RETURNING id", values)
         item_id = cur.fetchone()[0]
+
+        # Now compute and set sample_code and SerialNum using the assigned DB id
+        if year:
+            sample_code = _generate_sample_code(prefix, year, item_id)
+            serial_num = _derive_serial_num(sample_code)
+            cur.execute('UPDATE inventory SET "sample_code" = %s, "SerialNum" = %s WHERE id = %s',
+                        (sample_code, serial_num, item_id))
+
         conn.commit()
         conn.close()
         return item_id
@@ -1619,7 +1810,7 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
     values = []
     ph = "%s"
 
-    for field in ALL_FIELDS:
+    for field in ALL_FIELDS_V2:
         val = getattr(payload, field, None)
         if val is not None:
             updates.append(f'"{field}" = {ph}')
@@ -1645,6 +1836,39 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
     if payload.Status is not None:
         updates.append('"Status" = ' + ph)
         values.append(payload.Status)
+
+    # Recompute generated fields if Brand or DateReceived changed
+    if payload.Brand is not None or payload.DateReceived is not None:
+        def _fetch_current():
+            conn2 = psycopg2.connect(database_url)
+            c2 = conn2.cursor()
+            c2.execute('SELECT "Brand", "DateReceived" FROM inventory WHERE id = %s', (item_id,))
+            row = c2.fetchone()
+            conn2.close()
+            return row
+        current_row = await _safe_pg_query(_fetch_current)
+        current_brand = current_row[0] if current_row else ""
+        current_date_received = current_row[1] if current_row else ""
+
+        new_brand = payload.Brand if payload.Brand is not None else current_brand
+        new_date_received = payload.DateReceived if payload.DateReceived is not None else current_date_received
+
+        brand_changed = _normalize_brand(new_brand).lower() != _normalize_brand(current_brand).lower()
+        date_changed = (new_date_received or "").strip() != (current_date_received or "").strip()
+
+        if brand_changed or date_changed:
+            sample_type = _derive_sample_type(new_brand)
+            prefix = _derive_prefix(sample_type)
+            year = _extract_year(new_date_received)
+            if year:
+                sample_code = _generate_sample_code(prefix, year, item_id)
+                serial_num = _derive_serial_num(sample_code)
+                updates.append('"SampleType" = ' + ph)
+                values.append(sample_type)
+                updates.append('"sample_code" = ' + ph)
+                values.append(sample_code)
+                updates.append('"SerialNum" = ' + ph)
+                values.append(serial_num)
 
     if not updates:
         return JSONResponse({"id": item_id})
