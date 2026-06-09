@@ -263,8 +263,28 @@ def _extract_year(date_received: Optional[str]) -> str:
     except (ValueError, TypeError):
         return ""
 
-def _generate_sample_code(prefix: str, year: str, db_id: int) -> str:
-    return f"{prefix}{year}-{db_id:04d}"
+def _next_sequence(cur) -> int:
+    cur.execute(
+        'SELECT MAX("SerialNum") FROM inventory WHERE "SerialNum" IS NOT NULL'
+    )
+    max_serial = cur.fetchone()[0]
+    if max_serial is None:
+        return 1
+    try:
+        return int(str(max_serial)[-4:]) + 1
+    except (ValueError, IndexError):
+        return 1
+
+def _extract_seq_from_serial(serial_num: Optional[str]) -> Optional[int]:
+    if not serial_num:
+        return None
+    try:
+        return int(str(serial_num)[-4:])
+    except (ValueError, IndexError):
+        return None
+
+def _generate_sample_code(prefix: str, year: str, seq: int) -> str:
+    return f"{prefix}{year}-{seq:04d}"
 
 def _derive_serial_num(sample_code: str) -> str:
     return sample_code[3:].replace("-", "")
@@ -1772,9 +1792,9 @@ async def create_item(request: Request, payload: ItemIn):
         cur.execute(f"INSERT INTO inventory ({field_sql}) VALUES ({placeholder_sql}) RETURNING id", values)
         item_id = cur.fetchone()[0]
 
-        # Now compute and set sample_code and SerialNum using the assigned DB id
-        if year:
-            sample_code = _generate_sample_code(prefix, year, item_id)
+        seq = _next_sequence(cur)
+        if seq > 0:
+            sample_code = _generate_sample_code(prefix, year, seq)
             serial_num = _derive_serial_num(sample_code)
             cur.execute('UPDATE inventory SET "sample_code" = %s, "SerialNum" = %s WHERE id = %s',
                         (sample_code, serial_num, item_id))
@@ -1820,8 +1840,11 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
     updates = []
     values = []
     ph = "%s"
+    server_managed_fields = {"sample_code", "SerialNum", "SampleType"}
 
     for field in ALL_FIELDS_V2:
+        if field in server_managed_fields:
+            continue
         val = getattr(payload, field, None)
         if val is not None:
             updates.append(f'"{field}" = {ph}')
@@ -1853,13 +1876,16 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
         def _fetch_current():
             conn2 = psycopg2.connect(database_url)
             c2 = conn2.cursor()
-            c2.execute('SELECT "Brand", "DateReceived" FROM inventory WHERE id = %s', (item_id,))
+            c2.execute('SELECT "Brand", "DateReceived", "sample_code", "SerialNum" FROM inventory WHERE id = %s', (item_id,))
             row = c2.fetchone()
             conn2.close()
             return row
         current_row = await _safe_pg_query(_fetch_current)
+        if not current_row:
+            raise HTTPException(status_code=404, detail="Item not found")
         current_brand = current_row[0] if current_row else ""
         current_date_received = current_row[1] if current_row else ""
+        current_serial_num = current_row[3]
 
         new_brand = payload.Brand if payload.Brand is not None else current_brand
         new_date_received = payload.DateReceived if payload.DateReceived is not None else current_date_received
@@ -1872,14 +1898,24 @@ async def update_item(request: Request, item_id: int, payload: ItemIn):
             prefix = _derive_prefix(sample_type)
             year = _extract_year(new_date_received)
             if year:
-                sample_code = _generate_sample_code(prefix, year, item_id)
-                serial_num = _derive_serial_num(sample_code)
-                updates.append('"SampleType" = ' + ph)
-                values.append(sample_type)
-                updates.append('"sample_code" = ' + ph)
-                values.append(sample_code)
-                updates.append('"SerialNum" = ' + ph)
-                values.append(serial_num)
+                seq = _extract_seq_from_serial(current_serial_num)
+                if seq is None:
+                    def _get_seq():
+                        conn3 = psycopg2.connect(database_url)
+                        c3 = conn3.cursor()
+                        s = _next_sequence(c3)
+                        conn3.close()
+                        return s
+                    seq = await _safe_pg_query(_get_seq)
+                if seq and seq > 0:
+                    sample_code = _generate_sample_code(prefix, year, seq)
+                    serial_num = _derive_serial_num(sample_code)
+                    updates.append('"SampleType" = ' + ph)
+                    values.append(sample_type)
+                    updates.append('"sample_code" = ' + ph)
+                    values.append(sample_code)
+                    updates.append('"SerialNum" = ' + ph)
+                    values.append(serial_num)
 
     if not updates:
         return JSONResponse({"id": item_id})

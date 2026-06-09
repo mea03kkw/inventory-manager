@@ -1232,18 +1232,11 @@ function normalizeItemFormData() {
     if (ucEl && ucEl.value !== '') {
         ucEl.value = String(parseInt(ucEl.value, 10) || 1);
     }
-    // Sync generated fields to the legacy field names for backend compatibility
-    var synced = {
-        Title: 'ProductName',
-        SerialNum: 'serial_num_display',
-        SampleType: 'sample_type_display'
-    };
-    for (var dest in synced) {
-        var srcEl = document.getElementById(synced[dest]);
-        var destEl = document.getElementById(dest);
-        if (srcEl && srcEl.value && destEl) {
-            destEl.value = srcEl.value;
-        }
+    // Title fallback: copy ProductName into Title if Title is empty
+    var titleSrc = document.getElementById('ProductName');
+    var titleDest = document.getElementById('Title');
+    if (titleSrc && titleSrc.value && titleDest && !titleDest.value) {
+        titleDest.value = titleSrc.value;
     }
 }
 
@@ -1497,11 +1490,10 @@ async function updateLivePreview() {
         }
     }
     
-    // Client-side preview (approximate - real code uses DB ID)
+    // Client-side preview not possible — sequence requires DB query
+    // The real values will be loaded from backend after save
     var prefix = sampleType === 'Philips' ? 'PHI' : 'CMT';
     var year = dateReceived.substring(0, 4);
-    if (scEl) scEl.value = prefix + year + '-????';
-    if (snEl) snEl.value = year + '????';
 }
 
 // ============================================================
@@ -1588,8 +1580,11 @@ async function submitItemForm(e) {
     var submitBtn = document.getElementById('submitBtn');
     setButtonPending(submitBtn, true, 'Saving...');
     
+    // Skip auto-generated fields — backend manages these server-side
+    var skipFields = { sample_code: true, SerialNum: true, SampleType: true };
     var data = {};
     FIELD_LIST.forEach(function(f) {
+        if (skipFields[f]) return;
         var el = document.getElementById(f);
         if (el) {
             if (el.tagName === 'SELECT' || el.type === 'checkbox') {
