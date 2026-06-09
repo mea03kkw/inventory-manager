@@ -22,9 +22,15 @@ load_dotenv()
 parser = argparse.ArgumentParser()
 parser.add_argument("--force", action="store_true", help="Skip confirmation prompt")
 parser.add_argument("--allow-remote", action="store_true", help="Allow connecting to remote/non-localhost databases")
+parser.add_argument("--db-url", type=str, default=None, help="Database URL (overrides env and .env)")
 args = parser.parse_args()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+DATABASE_URL = ""
+if args.db_url:
+    DATABASE_URL = args.db_url
+else:
+    load_dotenv()
+    DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not DATABASE_URL:
     sys.exit("ERROR: DATABASE_URL is not set")
 
