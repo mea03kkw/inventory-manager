@@ -765,6 +765,29 @@ async def get_categories():
         return [{"name": r[0]} for r in rows]
     return await _safe_pg_query(_query)
 
+
+# ============================================================================
+# Temporary: trigger Jenny baseline import on production
+# ============================================================================
+
+@app.post("/api/admin/trigger-import")
+async def trigger_import(request: Request):
+    admin = await require_admin(request)
+    database_url = _get_db_url()
+    import subprocess, sys
+    script_path = os.path.join(os.path.dirname(__file__), "scripts", "import_jenny_baseline.py")
+    result = subprocess.run(
+        [sys.executable, script_path, "--force", "--allow-remote"],
+        capture_output=True, text=True, timeout=120,
+        env={**os.environ, "DATABASE_URL": database_url},
+    )
+    return JSONResponse({
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "returncode": result.returncode,
+    })
+
+
 # ============================================================================
 # Auth Routes
 # ============================================================================
