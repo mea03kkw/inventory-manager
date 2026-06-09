@@ -710,9 +710,24 @@ def init_db():
 # ============================================================================
 
 def run_jenny_import():
-    """Import 231 Jenny baseline rows from embedded JSON data.
-    Called once when RUN_IMPORT_ON_STARTUP=1."""
+    """Import 231 Jenny baseline rows from JSON data.
+    Runs automatically if inventory has fewer than 231 rows."""
     import json, pathlib
+
+    # Guard: skip if inventory already has >= 231 rows
+    database_url = _get_db_url()
+    try:
+        check_conn = psycopg2.connect(database_url)
+        cur = check_conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM inventory")
+        cnt = cur.fetchone()[0]
+        check_conn.close()
+        if cnt >= 231:
+            print(f"[IMPORT] Inventory already has {cnt} rows, skipping import")
+            return
+    except Exception:
+        pass
+
     json_path = pathlib.Path(__file__).parent / "scripts" / "sample_library_data.json"
     if not json_path.exists():
         print("[IMPORT] sample_library_data.json not found, skipping")
@@ -769,7 +784,6 @@ def run_jenny_import():
         "others": "OTH",
     }
 
-    database_url = _get_db_url()
     conn = psycopg2.connect(database_url)
     cur = conn.cursor()
 
@@ -882,9 +896,8 @@ def run_jenny_import():
 async def init_db_async():
     _ensure_upload_dir()
     await run_in_threadpool(init_db)
-    # One-time import: if RUN_IMPORT_ON_STARTUP=1, import Jenny baseline from JSON data
-    if os.getenv("RUN_IMPORT_ON_STARTUP", "0") == "1":
-        await run_in_threadpool(run_jenny_import)
+    # One-time import: if inventory has fewer than 231 rows and JSON data exists, auto-import
+    await run_in_threadpool(run_jenny_import)
 
 # ============================================================================
 # Ensure database is initialized on import (for TestClient/script usage)
