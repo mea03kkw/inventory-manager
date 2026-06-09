@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 try:
     import psycopg2
+    import psycopg2.extensions
 except ImportError:
     psycopg2 = None
 import csv
@@ -705,6 +706,175 @@ def init_db():
     conn.close()
 
 # ============================================================================
+# One-time Jenny baseline import from JSON data
+# ============================================================================
+
+def run_jenny_import():
+    """Import 231 Jenny baseline rows from embedded JSON data.
+    Called once when RUN_IMPORT_ON_STARTUP=1."""
+    import json, pathlib
+    json_path = pathlib.Path(__file__).parent / "scripts" / "sample_library_data.json"
+    if not json_path.exists():
+        print("[IMPORT] sample_library_data.json not found, skipping")
+        return
+    with open(json_path, "r", encoding="utf-8") as f:
+        rows_data = json.load(f)
+
+    from datetime import date as dt_date, datetime
+
+    CATEGORY_MAP = {
+        "dryer": "Dryer",
+        "styler": "Styler",
+        "style": "Styler",
+        "straightener": "Straightener",
+        "brush & massager": "Brush & Massager",
+        "others": "Others",
+    }
+
+    def _normalize_brand(raw):
+        v = (raw or "").strip()
+        if v.lower() == "philips":
+            return "Philips"
+        return v
+
+    def _derive_sample_type(brand):
+        return "Philips" if _normalize_brand(brand).lower() == "philips" else "Competitor"
+
+    def _derive_prefix(sample_type):
+        return "PHI" if sample_type == "Philips" else "CMT"
+
+    def _normalize_category(raw):
+        v = (raw or "").strip().lower()
+        return CATEGORY_MAP.get(v, v.title() if v else "")
+
+    def _extract_year(dt_val):
+        if not dt_val:
+            return ""
+        try:
+            return str(dt_date.fromisoformat(str(dt_val).split()[0]).year)
+        except (ValueError, TypeError):
+            return ""
+
+    def _generate_sample_code(prefix, year, db_id):
+        return f"{prefix}{year}-{db_id:04d}"
+
+    def _derive_serial_num(sample_code):
+        return sample_code[3:].replace("-", "")
+
+    dept_code_map = {
+        "r&d": "RD",
+        "prc": "PRC",
+        "cmm": "CMM",
+        "pmo": "PMO",
+        "others": "OTH",
+    }
+
+    database_url = _get_db_url()
+    conn = psycopg2.connect(database_url)
+    cur = conn.cursor()
+
+    # Clear existing data
+    cur.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+    cur.execute("TRUNCATE TABLE checkout_records, inventory RESTART IDENTITY CASCADE")
+    print("[IMPORT] Tables truncated.")
+    cur.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_READ_COMMITTED)
+
+    # Build normalized rows
+    all_fields = [
+        "Title", "SerialNum", "SampleType", "ProductName", "Brand", "Model",
+        "Category", "SubCategory", "DepartmentOwner", "Condition", "DateReceived",
+        "StorageLocationCode", "UnitCount", "UnitMeasure", "Column1", "Attachments",
+        "Notes", "PhotoLink",
+    ]
+    new_fields = ["sample_code", "record_state", "Environment"]
+    all_fields_v2 = all_fields + new_fields
+
+    field_sql = ", ".join([f'"{f}"' for f in all_fields_v2])
+    placeholders = ", ".join(["%s"] * len(all_fields_v2))
+    insert_sql = f"INSERT INTO inventory ({field_sql}, \"Status\", quantity, available_quantity) VALUES ({placeholders}, %s, %s, %s)"
+
+    conn.autocommit = False
+    try:
+        for i, row in enumerate(rows_data):
+            db_id = i + 1
+            brand = _normalize_brand(row.get("Brand", ""))
+            sample_type = _derive_sample_type(brand)
+            prefix = _derive_prefix(sample_type)
+            year = _extract_year(row.get("DateReceived", ""))
+            sample_code = _generate_sample_code(prefix, year, db_id)
+            serial_num = _derive_serial_num(sample_code)
+            category = _normalize_category(row.get("Category", ""))
+
+            date_received_str = (row.get("DateReceived") or "").strip()
+            if date_received_str:
+                try:
+                    date_received_str = str(dt_date.fromisoformat(date_received_str.split()[0]))
+                except:
+                    pass
+
+            def _na(v):
+                return (v or "NA").strip() if v else "NA"
+
+            dept = (row.get("DepartmentOwner") or "").strip()
+            dept_code = dept_code_map.get(dept.lower().strip(), dept)
+
+            try:
+                uc = int(str(row.get("UnitCount", "1")).strip()) or 1
+                uc = max(uc, 1)
+            except:
+                uc = 1
+
+            env = (row.get("Environment") or "").strip()
+            environment = env if env else "Legacy"
+
+            vals = [
+                _na(row.get("ProductName")),
+                serial_num,
+                sample_type,
+                _na(row.get("ProductName")),
+                brand,
+                _na(row.get("Model")),
+                category,
+                _na(row.get("SubCategory")),
+                dept_code,
+                _na(row.get("Condition")),
+                date_received_str,
+                (row.get("StorageLocationCode") or "").strip(),
+                str(uc),
+                "",
+                "",
+                "",
+                _na(row.get("Remark")),
+                "",
+                sample_code,
+                "ACTIVE",
+                environment,
+                "IN_STOCK",
+                uc,
+                uc,
+            ]
+            cur.execute(insert_sql, vals)
+
+        conn.commit()
+        # Reset sequence to max(id)
+        cur.execute("SELECT setval('inventory_id_seq', (SELECT MAX(id) FROM inventory))")
+        print(f"[IMPORT] Successfully imported {len(rows_data)} rows")
+
+        # Verify
+        cur.execute("SELECT COUNT(*) FROM inventory")
+        cnt = cur.fetchone()[0]
+        print(f"[IMPORT] Total rows: {cnt}")
+
+        cur.execute("SELECT nextval('inventory_id_seq')")
+        print(f"[IMPORT] Next sequence: {cur.fetchone()[0]}")
+    except Exception as e:
+        conn.rollback()
+        print(f"[IMPORT] ERROR: {e}")
+    finally:
+        conn.close()
+
+
+# ============================================================================
 # Async startup wrapper to avoid blocking the event loop
 # ============================================================================
 
@@ -712,6 +882,9 @@ def init_db():
 async def init_db_async():
     _ensure_upload_dir()
     await run_in_threadpool(init_db)
+    # One-time import: if RUN_IMPORT_ON_STARTUP=1, import Jenny baseline from JSON data
+    if os.getenv("RUN_IMPORT_ON_STARTUP", "0") == "1":
+        await run_in_threadpool(run_jenny_import)
 
 # ============================================================================
 # Ensure database is initialized on import (for TestClient/script usage)
