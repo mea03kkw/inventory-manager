@@ -678,12 +678,18 @@ def init_db():
         "SELECT to_regclass('public.uq_sample_code')"
     )
     if cur.fetchone()[0] is None:
-        cur.execute("ALTER TABLE inventory ADD CONSTRAINT uq_sample_code UNIQUE (sample_code)")
+        try:
+            cur.execute("ALTER TABLE inventory ADD CONSTRAINT uq_sample_code UNIQUE (sample_code)")
+        except Exception as e:
+            print(f"[WARN] Could not create uq_sample_code: {e}")
     cur.execute(
         "SELECT to_regclass('public.uq_serial_num')"
     )
     if cur.fetchone()[0] is None:
-        cur.execute('ALTER TABLE inventory ADD CONSTRAINT uq_serial_num UNIQUE ("SerialNum")')
+        try:
+            cur.execute('ALTER TABLE inventory ADD CONSTRAINT uq_serial_num UNIQUE ("SerialNum")')
+        except Exception as e:
+            print(f"[WARN] Could not create uq_serial_num: {e}")
 
     # Photo metadata columns for PostgreSQL
     cur.execute('ALTER TABLE inventory ADD COLUMN IF NOT EXISTS photo_original_name TEXT')
