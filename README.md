@@ -1,10 +1,13 @@
-# HC R&amp;D Sample Library
+# HC R&amp;D Sample Library v2.0.0
 
 Internal web application for managing sample inventory, checkout, and return tracking.
 
 ## Features
 
 - Sample inventory management
+- **Auto-generated SampleCode/SerialNum** from Brand + DateReceived
+- **Master data dropdowns** for Category, Department, Storage Location
+- **Live preview** of generated fields in the admin form
 - Sample photo attachment (Admin: upload/replace/delete, auto-compressed to ≤300 KB)
 - Checkout and return tracking
 - Role-based access control (Admin / User)
@@ -106,6 +109,11 @@ Never commit real credentials into the repository.
 
 ## API Routes Summary
 
+### Master Data
+- `GET /api/master/departments` — list active departments
+- `GET /api/master/storage-locations` — list active storage racks
+- `GET /api/master/categories` — list active categories
+
 ### Authentication
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
@@ -137,6 +145,23 @@ Never commit real credentials into the repository.
 - Ongoing hardening items include session security, CSRF protection, and audit logging.
 
 ## Version History
+
+### V2.0.0
+Focus: sample identity redesign with auto-generated codes and master data
+
+- **New schema**: added `sample_code`, `record_state`, `Environment` columns to inventory
+- **Master data tables**: `department_master`, `storage_location_master`, `category_master` with seed data
+- **Auto-generation**: SampleType derived from Brand (Philips → Philips, else Competitor), SampleCode = `[PHI|CMT][YYYY]-[XXXX]` (XXXX = DB id), SerialNum derived from SampleCode
+- **Backend generation**: create and update endpoints recompute identity fields when Brand/DateReceived changes
+- **Master data API**: endpoints for departments, storage locations, and categories
+- **Admin form refactored**: grey read-only generated block + master data dropdowns + live preview
+- **Front page columns**: ProductName, Brand, Category, Type, Rack, Status
+- **Detail modal**: shows SampleCode, Box Number, and all new fields
+- **DJ Jenny baseline import**: 231 sample rows imported with full normalization
+- **Import safety**: production-host guard (`--allow-remote` flag required for remote DBs)
+- **Unique constraints**: `uq_sample_code` and `uq_serial_num` (non-blocking on startup)
+- **Startup robustness**: constraint creation wrapped in try/except with commit/rollback isolation
+- Bumped version from v1.6.6 → v2.0.0
 
 ### V1.6.6
 Focus: retire SQLite — PostgreSQL-only backend
