@@ -673,14 +673,17 @@ def init_db():
             categories,
         )
 
-    # Unique constraints for V2 identity fields
+    # Unique constraints for V2 identity fields (in a fresh sub-transaction)
+    conn.commit()
     cur.execute(
         "SELECT to_regclass('public.uq_sample_code')"
     )
     if cur.fetchone()[0] is None:
         try:
             cur.execute("ALTER TABLE inventory ADD CONSTRAINT uq_sample_code UNIQUE (sample_code)")
+            conn.commit()
         except Exception as e:
+            conn.rollback()
             print(f"[WARN] Could not create uq_sample_code: {e}")
     cur.execute(
         "SELECT to_regclass('public.uq_serial_num')"
@@ -688,7 +691,9 @@ def init_db():
     if cur.fetchone()[0] is None:
         try:
             cur.execute('ALTER TABLE inventory ADD CONSTRAINT uq_serial_num UNIQUE ("SerialNum")')
+            conn.commit()
         except Exception as e:
+            conn.rollback()
             print(f"[WARN] Could not create uq_serial_num: {e}")
 
     # Photo metadata columns for PostgreSQL
