@@ -1635,30 +1635,32 @@ async def export_items_csv(
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "Title", "SerialNum", "SampleType", "StorageLocationCode", "Status",
-        "Quantity", "AvailableQuantity", "Category",
-        "SubCategory", "Brand", "Model", "DepartmentOwner", "Condition",
-        "DateReceived", "UnitCount", "UnitMeasure", "Notes"
+        "Title", "Model", "Brand", "Category", "SubCategory",
+        "StorageLocationCode", "Status",
+        "Quantity", "AvailableQuantity",
+        "DepartmentOwner", "Condition",
+        "DateReceived", "UnitCount", "UnitMeasure",
+        "SerialNum", "SampleType", "Notes"
     ])
     for item in items:
         status_val = item.get("status") or item.get("Status") or "IN_STOCK"
         writer.writerow([
             item.get("Title") or "",
-            item.get("SerialNum") or "",
-            item.get("SampleType") or "",
+            item.get("Model") or "",
+            item.get("Brand") or "",
+            item.get("Category") or "",
+            item.get("SubCategory") or "",
             item.get("StorageLocationCode") or "",
             status_val,
             item.get("quantity") or 1,
             item.get("available_quantity") or item.get("quantity") or 1,
-            item.get("Category") or "",
-            item.get("SubCategory") or "",
-            item.get("Brand") or "",
-            item.get("Model") or "",
             item.get("DepartmentOwner") or "",
             item.get("Condition") or "",
             item.get("DateReceived") or "",
             item.get("UnitCount") or "",
             item.get("UnitMeasure") or "",
+            item.get("SerialNum") or "",
+            item.get("SampleType") or "",
             item.get("Notes") or "",
         ])
 

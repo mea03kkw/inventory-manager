@@ -3140,6 +3140,24 @@ Browse Samples desktop density — higher data per screen
   font-weight: 600;
 }
 
+#samples-section .desktop-table-container td:nth-child(4),
+#samples-section .desktop-table-container td:nth-child(7),
+#samples-section .desktop-table-container td:nth-child(8) {
+  white-space: nowrap;
+}
+
+#samples-section .desktop-table-container th:nth-child(4),
+#samples-section .desktop-table-container th:nth-child(7),
+#samples-section .desktop-table-container th:nth-child(8) {
+  white-space: nowrap;
+}
+
+#samples-section .desktop-table-container td:nth-child(4) {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 #samples-section .desktop-table-container td button {
   min-height: 30px;
   height: 30px;

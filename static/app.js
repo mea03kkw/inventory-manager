@@ -1074,17 +1074,18 @@ function renderItems() {
         }
         var statusText = getDisplayStatusText(item);
         var statusClass = getDisplayStatusClass(item);
-        return '\n            <tr onclick="viewItem(' + item.id + ')" style="cursor:pointer;">\n                <td class="photo-col-cell">' + (item.PhotoLink ? '<img class="table-photo-thumb" src="' + API.photoGet(item.id) + '" alt="">' : '') + '</td>\n                <td>' + escapeHtml(item.ProductName || item.Title || '') + '</td>\n                <td>' + escapeHtml(item.SerialNum || '') + '</td>\n                <td>' + escapeHtml(item.Brand || '') + '</td>\n                <td>' + escapeHtml(item.Category || '') + '</td>\n                <td>' + escapeHtml(item.SampleType || '') + '</td>\n                <td>' + escapeHtml(item.StorageLocationCode || '') + '</td>\n                <td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>\n                <td>' + actionCellHtml + '</td>\n            </tr>\n        ';
+        return '\n            <tr onclick="viewItem(' + item.id + ')" style="cursor:pointer;">\n                <td class="photo-col-cell">' + (item.PhotoLink ? '<img class="table-photo-thumb" src="' + API.photoGet(item.id) + '" alt="">' : '') + '</td>\n                <td>' + escapeHtml(item.ProductName || item.Title || '') + '</td>\n                <td>' + escapeHtml(item.Brand || '') + '</td>\n                <td>' + escapeHtml(item.Model || '') + '</td>\n                <td>' + escapeHtml(item.Category || '') + '</td>\n                <td>' + escapeHtml(item.SubCategory || '') + '</td>\n                <td>' + escapeHtml(item.StorageLocationCode || '') + '</td>\n                <td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>\n                <td>' + actionCellHtml + '</td>\n            </tr>\n        ';
     }).join('');
 
     if (cardsContainer) {
         cardsContainer.innerHTML = allItems.map(item => {
             const status = normalizeStatus(item.status || item.Status);
             var metaParts = [];
+            if (item.Model) metaParts.push(item.Model);
             if (item.Brand) metaParts.push(item.Brand);
             if (item.Category) metaParts.push(item.Category);
+            if (item.SubCategory) metaParts.push(item.SubCategory);
             if (item.StorageLocationCode) metaParts.push(item.StorageLocationCode);
-            if (item.SampleType) metaParts.push(item.SampleType);
             var metaHtml = metaParts.length > 0
                 ? '<div class="inventory-card__meta">' + metaParts.map(function(p) { return '<span class="inventory-card__meta-item">' + escapeHtml(p) + '</span>'; }).join('<span class="inventory-card__meta-sep">·</span>') + '</div>'
                 : '';
@@ -1095,9 +1096,9 @@ function renderItems() {
 
             var cardHtml;
             if (item.PhotoLink) {
-                cardHtml = '\n<div class="inventory-card inventory-card-photo" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__photo-layout">\n    <div class="inventory-card__thumb-wrap"><img class="mobile-card-thumb" src="' + API.photoGet(item.id) + '" alt=""></div>\n    <div class="inventory-card__photo-content">\n      <div class="inventory-card__identity">\n        <div class="inventory-card__title">' + escapeHtml(item.ProductName || item.Title || '') + '</div>\n        <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n      </div>\n      <div class="inventory-card__status-row">\n        <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n        ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n      </div>\n      ' + metaHtml + '\n    </div>\n  </div>\n</div>';
+                cardHtml = '\n<div class="inventory-card inventory-card-photo" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__photo-layout">\n    <div class="inventory-card__thumb-wrap"><img class="mobile-card-thumb" src="' + API.photoGet(item.id) + '" alt=""></div>\n    <div class="inventory-card__photo-content">\n      <div class="inventory-card__identity">\n        <div class="inventory-card__title">' + escapeHtml(item.ProductName || item.Title || '') + '</div>\n        <div class="inventory-card__serial">' + escapeHtml(item.Model || '') + '</div>\n      </div>\n      <div class="inventory-card__status-row">\n        <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n        ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n      </div>\n      ' + metaHtml + '\n    </div>\n  </div>\n</div>';
             } else {
-                cardHtml = '\n<div class="inventory-card" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__identity">\n    <div class="inventory-card__title">' + escapeHtml(item.ProductName || item.Title || '') + '</div>\n    <div class="inventory-card__serial">' + escapeHtml(item.SerialNum || '') + '</div>\n  </div>\n  <div class="inventory-card__status-row">\n    <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n    ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n  </div>\n  ' + metaHtml + '\n</div>';
+                cardHtml = '\n<div class="inventory-card" onclick="viewItem(' + item.id + ')">\n  <div class="inventory-card__identity">\n    <div class="inventory-card__title">' + escapeHtml(item.ProductName || item.Title || '') + '</div>\n    <div class="inventory-card__serial">' + escapeHtml(item.Model || '') + '</div>\n  </div>\n  <div class="inventory-card__status-row">\n    <span class="status-badge ' + statusClass + '">' + statusText + '</span>\n    ' + (actionHtml ? '<div class="inventory-card__action">' + actionHtml + '</div>' : '') + '\n  </div>\n  ' + metaHtml + '\n</div>';
             }
             return cardHtml;
         }).join('');
