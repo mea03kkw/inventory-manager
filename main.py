@@ -1577,9 +1577,9 @@ async def list_items(
         """
         params = []
         if search:
-            sql += ' AND (i."Title" ILIKE %s OR i."SerialNum" ILIKE %s OR i."SampleType" ILIKE %s OR i."ProductName" ILIKE %s OR i."Brand" ILIKE %s OR i."Model" ILIKE %s)'
+            sql += ' AND (i."ProductName" ILIKE %s OR i."Brand" ILIKE %s OR i."Category" ILIKE %s OR i."DepartmentOwner" ILIKE %s OR i."Environment" ILIKE %s OR i."Model" ILIKE %s OR i."sample_code" ILIKE %s OR i."StorageLocationCode" ILIKE %s)'
             like = f"%{search}%"
-            params.extend([like, like, like, like, like, like])
+            params.extend([like, like, like, like, like, like, like, like])
         if status:
             sql += ' AND i."Status" = %s'
             params.append(status)
@@ -1616,9 +1616,9 @@ async def export_items_csv(
         """
         params = []
         if search:
-            sql += ' AND (i."Title" ILIKE %s OR i."SerialNum" ILIKE %s OR i."SampleType" ILIKE %s)'
+            sql += ' AND (i."ProductName" ILIKE %s OR i."Brand" ILIKE %s OR i."Category" ILIKE %s OR i."DepartmentOwner" ILIKE %s OR i."Environment" ILIKE %s OR i."Model" ILIKE %s OR i."sample_code" ILIKE %s OR i."StorageLocationCode" ILIKE %s)'
             like = f"%{search}%"
-            params.extend([like, like, like])
+            params.extend([like, like, like, like, like, like, like, like])
         if status:
             sql += ' AND i."Status" = %s'
             params.append(status)
