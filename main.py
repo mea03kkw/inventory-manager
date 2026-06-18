@@ -1636,7 +1636,7 @@ async def export_items_csv(
     writer = csv.writer(output)
     writer.writerow([
         "Title", "Model", "Brand", "Category", "SubCategory",
-        "StorageLocationCode", "Status",
+        "StorageLocationCode", "Environment", "Status",
         "Quantity", "AvailableQuantity",
         "DepartmentOwner", "Condition",
         "DateReceived", "UnitCount", "UnitMeasure",
@@ -1651,6 +1651,7 @@ async def export_items_csv(
             item.get("Category") or "",
             item.get("SubCategory") or "",
             item.get("StorageLocationCode") or "",
+            item.get("Environment") or "",
             status_val,
             item.get("quantity") or 1,
             item.get("available_quantity") or item.get("quantity") or 1,
