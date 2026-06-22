@@ -2397,10 +2397,16 @@ async def get_rack_summary(request: Request):
         conn = psycopg2.connect(database_url)
         cur = conn.cursor()
         cur.execute("""
+            -- Rack Summary: counts inventory RECORDS per rack, NOT physical units.
+            -- 'in_stock' and 'checked_out' use available_quantity as a state gate:
+            --   available_quantity > 0  → record is "in stock" (some or all units available)
+            --   available_quantity = 0  → record is "checked out" (all units borrowed)
+            -- This matches dashboard Stats logic (also record-count, not unit-summed).
+            -- Lost and scrapped records are excluded from in_stock/checked_out counts.
             SELECT "StorageLocationCode" as rack,
                    COUNT(*) as total,
-                   SUM(CASE WHEN "Status" = 'IN_STOCK' THEN 1 ELSE 0 END) as in_stock,
-                   SUM(CASE WHEN "Status" = 'CHECKED_OUT' THEN 1 ELSE 0 END) as checked_out,
+                   SUM(CASE WHEN "Status" NOT IN ('LOST', 'SCRAPPED') AND available_quantity > 0 THEN 1 ELSE 0 END) as in_stock,
+                   SUM(CASE WHEN "Status" NOT IN ('LOST', 'SCRAPPED') AND available_quantity = 0 THEN 1 ELSE 0 END) as checked_out,
                    SUM(CASE WHEN "Status" = 'LOST' THEN 1 ELSE 0 END) as lost,
                    SUM(CASE WHEN "Status" = 'SCRAPPED' THEN 1 ELSE 0 END) as scrapped
             FROM inventory

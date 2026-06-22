@@ -1880,6 +1880,128 @@ button.btn-pending {
 }
 
 /* ============================================================
+   Session Expired Overlay
+   ============================================================ */
+
+.session-expired-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+}
+
+.session-expired-overlay.hidden {
+    display: none;
+}
+
+.session-expired-card {
+    background: white;
+    border-radius: 14px;
+    max-width: 400px;
+    width: calc(100vw - 40px);
+    padding: 32px 28px 28px;
+    text-align: center;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
+}
+
+.session-expired-icon {
+    margin-bottom: 12px;
+}
+
+.session-expired-title {
+    margin: 0 0 8px;
+    font-size: 20px;
+    color: #122B45;
+    font-weight: 700;
+}
+
+.session-expired-text {
+    margin: 0 0 20px;
+    font-size: 15px;
+    color: #5B6B7A;
+    line-height: 1.5;
+}
+
+.session-expired-hint {
+    margin: 16px 0 0;
+    font-size: 12px;
+    color: #999;
+}
+
+/* ============================================================
+   Checkout Email Read-only Field
+   ============================================================ */
+
+.readonly-email-field {
+    background: #f0f2f5 !important;
+    color: #333 !important;
+    cursor: default !important;
+    border-color: #e0e0e0 !important;
+}
+
+/* ============================================================
+   Checkout Quantity Validation
+   ============================================================ */
+
+.checkout-qty-error {
+    color: #c62828;
+    font-size: 12px;
+    margin-top: 4px;
+    font-weight: 500;
+    display: none;
+}
+
+.checkout-qty-error.visible {
+    display: block;
+}
+
+.form-group.is-invalid .checkout-qty-error {
+    display: block;
+}
+
+/* ============================================================
+   Photo Save Feedback
+   ============================================================ */
+
+.photo-save-status {
+    font-size: 12px;
+    color: #888;
+    margin-top: 4px;
+    min-height: 16px;
+}
+
+.photo-save-status.is-error {
+    color: #c62828;
+}
+
+.photo-save-status.is-success {
+    color: #2e7d32;
+}
+
+.photo-retry-btn {
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: 1px solid #c62828;
+    color: #c62828;
+    background: white;
+    cursor: pointer;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+.photo-retry-btn:hover {
+    background: #fff5f5;
+}
+
+/* ============================================================
    Login Modal Density
    ============================================================ */
 

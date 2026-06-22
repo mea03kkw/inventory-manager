@@ -89,6 +89,63 @@ const API = {
 };
 
 // ============================================================
+// Session Expiry Detection — Global Fetch Wrapper
+// ============================================================
+
+(function() {
+    var _originalFetch = window.fetch;
+    var _sessionExpired = false;
+
+    window.fetch = function(input, init) {
+        return _originalFetch.apply(this, arguments).then(function(response) {
+            var url = '';
+            if (typeof input === 'string') {
+                url = input;
+            } else if (input && input.url) {
+                url = input.url;
+            }
+            // Only intercept 401 on authenticated-required endpoints (not login itself)
+            if (response.status === 401
+                && url.indexOf('/api/auth/login') === -1
+                && url.indexOf('/api/auth/me') === -1
+                && currentUser !== null
+                && !_sessionExpired) {
+                _sessionExpired = true;
+                showSessionExpiredOverlay();
+            }
+            return response;
+        });
+    };
+
+    // Exposed so login success can reset the flag
+    window._clearSessionExpired = function() {
+        _sessionExpired = false;
+    };
+})();
+
+function showSessionExpiredOverlay() {
+    var overlay = document.getElementById('sessionExpiredOverlay');
+    if (overlay) {
+        overlay.classList.remove('hidden');
+    }
+}
+
+function hideSessionExpiredOverlay() {
+    var overlay = document.getElementById('sessionExpiredOverlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+    }
+}
+
+function recoverSession() {
+    hideSessionExpiredOverlay();
+    // Clear auth state and redirect to guest login
+    currentUser = null;
+    updateAuthUI();
+    showToast('Please sign in again', 'success');
+}
+
+// ============================================================
 // Global State
 // ============================================================
 
@@ -367,8 +424,9 @@ async function submitLogin(e) {
             throw new Error(err.detail || 'Login failed');
         }
         const data = await response.json();
-        currentUser = data.user || data;
-        updateAuthUI();
+                currentUser = data.user || data;
+                if (window._clearSessionExpired) window._clearSessionExpired();
+                updateAuthUI();
         closeModal();
         if (currentUser.must_change_password) {
             showToast('You must change your password before continuing.', 'error');
@@ -787,6 +845,11 @@ function matchesStatusFilter(sample, selectedStatus) {
 // ============================================================
 
 function showToast(message, type) {
+    // Suppress redundant toasts when session expired overlay is visible
+    var sessionOverlay = document.getElementById('sessionExpiredOverlay');
+    if (sessionOverlay && !sessionOverlay.classList.contains('hidden')) {
+        return;
+    }
     var container = document.getElementById('toastContainer');
     if (!container) {
         container = document.createElement('div');
@@ -1381,6 +1444,8 @@ function startEdit(id) {
 
 function cancelEdit() {
     editingId = null;
+    _retryPhotoTargetId = null;
+    _retryPhotoAction = null;
     resetPhotoState();
     clearForm();
     document.getElementById('formTitle').textContent = 'Add New Sample';
@@ -1389,8 +1454,13 @@ function cancelEdit() {
     if (photoPreview) photoPreview.style.display = 'none';
     var photoRemoveBtn = document.getElementById('photoRemoveBtn');
     if (photoRemoveBtn) photoRemoveBtn.style.display = 'none';
+    var photoRetryBtn = document.getElementById('photoRetryBtn');
+    if (photoRetryBtn) photoRetryBtn.style.display = 'none';
     var photoStatus = document.getElementById('photoStatus');
-    if (photoStatus) photoStatus.textContent = '';
+    if (photoStatus) {
+        photoStatus.textContent = '';
+        photoStatus.className = 'photo-status-text';
+    }
     var photoInput = document.getElementById('photoInput');
     if (photoInput) photoInput.value = '';
     closeModal();
@@ -1601,7 +1671,10 @@ async function submitItemForm(e) {
     }
 
     var savedItemId = editingId;
-    
+    var photoError = null;
+    // Capture photo intent BEFORE any operations (so it survives state cleanup)
+    var hadPhotoIntent = photoState.file ? 'upload' : (photoState.removed && photoState.initialPhotoUrl ? 'remove' : null);
+
     try {
         if (editingId === null) {
             var response = await fetch(API.create(), {
@@ -1615,7 +1688,6 @@ async function submitItemForm(e) {
             }
             var created = await response.json();
             savedItemId = created.id;
-            showToast('Sample created successfully', 'success');
         } else {
             var response = await fetch(API.update(editingId), {
                 method: 'PUT',
@@ -1626,13 +1698,13 @@ async function submitItemForm(e) {
                 var err = await response.json();
                 throw new Error(err.detail || 'Failed to update sample');
             }
-            showToast('Sample updated successfully', 'success');
             editingId = null;
         }
 
-        // Photo upload/delete happens only after sample record save succeeds
+        // Phase 2: Photo upload/delete — only after record save
         if (savedItemId) {
             if (photoState.file) {
+                setButtonPending(submitBtn, true, 'Uploading photo...');
                 var formData = new FormData();
                 formData.append('file', photoState.file, 'photo.jpg');
                 var photoRes = await fetch(API.photoUpload(savedItemId), {
@@ -1641,29 +1713,134 @@ async function submitItemForm(e) {
                 });
                 if (!photoRes.ok) {
                     var photoErr = await photoRes.json();
-                    showToast('Sample saved but photo upload failed: ' + (photoErr.detail || 'Unknown error'), 'error');
-                } else {
-                    showToast('Photo uploaded', 'success');
+                    photoError = (photoErr.detail || 'Photo upload failed');
+                    _retryPhotoAction = 'upload';
                 }
             } else if (photoState.removed && photoState.initialPhotoUrl) {
+                setButtonPending(submitBtn, true, 'Removing photo...');
                 var delRes = await fetch(API.photoDelete(savedItemId), {
                     method: 'DELETE'
                 });
                 if (!delRes.ok) {
                     var delErr = await delRes.json();
-                    showToast('Sample saved but photo removal failed: ' + (delErr.detail || 'Unknown error'), 'error');
-                } else {
-                    showToast('Photo removed', 'success');
+                    photoError = (delErr.detail || 'Photo removal failed');
+                    _retryPhotoAction = 'delete';
                 }
             }
         }
-        
-        cancelEdit();
-        await loadItems();
+
+        if (photoError) {
+            // Sample saved but photo operation failed — keep modal open
+            setButtonPending(submitBtn, false);
+            var photoStatus = document.getElementById('photoStatus');
+            if (photoStatus) {
+                photoStatus.textContent = photoError;
+                photoStatus.className = 'photo-status-text is-error';
+            }
+            var photoRetryBtn = document.getElementById('photoRetryBtn');
+            if (photoRetryBtn) {
+                photoRetryBtn.style.display = '';
+                photoRetryBtn.textContent = _retryPhotoAction === 'delete' ? 'Retry Removal' : 'Retry Upload';
+            }
+            showToast('Sample saved. ' + photoError + '. You can retry or close.', 'error');
+            _retryPhotoTargetId = savedItemId;
+        } else {
+            // Everything succeeded — use captured intent (photoState already cleared by cancelEdit)
+            cancelEdit();
+            await loadItems();
+            if (hadPhotoIntent === 'upload') {
+                showToast('Sample saved successfully (photo uploaded)', 'success');
+            } else if (hadPhotoIntent === 'remove') {
+                showToast('Sample saved successfully (photo removed)', 'success');
+            } else {
+                showToast('Sample saved successfully', 'success');
+            }
+        }
     } catch (err) {
         console.error(err);
         setButtonPending(submitBtn, false);
         showToast('Save failed: ' + err.message, 'error');
+    }
+}
+
+// Retry state for photo operations after sample save
+var _retryPhotoTargetId = null;
+var _retryPhotoAction = null; // 'upload' or 'delete'
+
+function retryPhotoUpload() {
+    if (!_retryPhotoTargetId || !_retryPhotoAction) return;
+    var photoStatus = document.getElementById('photoStatus');
+    var submitBtn = document.getElementById('submitBtn');
+
+    if (_retryPhotoAction === 'delete') {
+        // Retry photo deletion
+        setButtonPending(submitBtn, true, 'Removing photo...');
+        if (photoStatus) {
+            photoStatus.textContent = 'Retrying removal...';
+            photoStatus.className = 'photo-status-text';
+        }
+        fetch(API.photoDelete(_retryPhotoTargetId), {
+            method: 'DELETE'
+        }).then(function(delRes) {
+            if (delRes.ok) {
+                if (photoStatus) {
+                    photoStatus.textContent = 'Photo removed successfully';
+                    photoStatus.className = 'photo-status-text is-success';
+                }
+                showToast('Photo removed successfully', 'success');
+                _retryPhotoTargetId = null;
+                _retryPhotoAction = null;
+                cancelEdit();
+                loadItems();
+            } else {
+                return delRes.json().then(function(delErr) {
+                    throw new Error(delErr.detail || 'Removal failed');
+                });
+            }
+        }).catch(function(err) {
+            setButtonPending(submitBtn, false);
+            if (photoStatus) {
+                photoStatus.textContent = 'Removal failed: ' + err.message + '. Retry or close.';
+                photoStatus.className = 'photo-status-text is-error';
+            }
+            showToast('Photo removal failed: ' + err.message, 'error');
+        });
+    } else {
+        // Retry photo upload (default)
+        setButtonPending(submitBtn, true, 'Uploading photo...');
+        if (photoStatus) {
+            photoStatus.textContent = 'Retrying upload...';
+            photoStatus.className = 'photo-status-text';
+        }
+        var formData = new FormData();
+        formData.append('file', photoState.file, 'photo.jpg');
+        fetch(API.photoUpload(_retryPhotoTargetId), {
+            method: 'POST',
+            body: formData
+        }).then(function(photoRes) {
+            if (photoRes.ok) {
+                if (photoStatus) {
+                    photoStatus.textContent = 'Photo uploaded successfully';
+                    photoStatus.className = 'photo-status-text is-success';
+                }
+                showToast('Photo uploaded successfully', 'success');
+                _retryPhotoTargetId = null;
+                _retryPhotoAction = null;
+                cancelEdit();
+                loadItems();
+            } else {
+                return photoRes.json().then(function(photoErr) {
+                    throw new Error(photoErr.detail || 'Upload failed');
+                });
+            }
+        }).catch(function(err) {
+            setButtonPending(submitBtn, false);
+            if (photoStatus) {
+                photoStatus.textContent = 'Upload failed: ' + err.message + '. Retry or close.';
+                photoStatus.className = 'photo-status-text is-error';
+            }
+            showToast('Photo upload failed: ' + err.message, 'error');
+        });
     }
 }
 
@@ -1720,6 +1897,33 @@ async function deleteSample(id) {
 // Checkout / Return
 // ============================================================
 
+function validateCheckoutQuantity() {
+    var qtyInput = document.getElementById('checkoutQuantity');
+    var errorDiv = document.getElementById('checkoutQtyError');
+    var submitBtn = document.querySelector('#checkoutModal .form-actions button[type="submit"]');
+    var availQty = parseInt(qtyInput.max, 10);
+    var val = parseInt(qtyInput.value, 10);
+
+    if (!errorDiv) return;
+
+    if (isNaN(val) || val < 1) {
+        errorDiv.textContent = 'Quantity must be at least 1';
+        errorDiv.classList.add('visible');
+        qtyInput.closest('.form-group').classList.add('is-invalid');
+        if (submitBtn) submitBtn.disabled = true;
+    } else if (val > availQty) {
+        errorDiv.textContent = 'Only ' + availQty + ' units available';
+        errorDiv.classList.add('visible');
+        qtyInput.closest('.form-group').classList.add('is-invalid');
+        if (submitBtn) submitBtn.disabled = true;
+    } else {
+        errorDiv.classList.remove('visible');
+        errorDiv.textContent = '';
+        qtyInput.closest('.form-group').classList.remove('is-invalid');
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
 async function openCheckoutModal(sampleId) {
     if (!isAuthenticatedUser()) {
         showToast('Please log in to checkout samples', 'error');
@@ -1745,6 +1949,16 @@ async function openCheckoutModal(sampleId) {
     qtyInput.min = 1;
     qtyInput.max = availQty;
 
+    // Reset quantity validation state
+    var errorDiv = document.getElementById('checkoutQtyError');
+    if (errorDiv) {
+        errorDiv.classList.remove('visible');
+        errorDiv.textContent = '';
+    }
+    qtyInput.closest('.form-group').classList.remove('is-invalid');
+    var submitBtn = document.querySelector('#checkoutModal .form-actions button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = false;
+
     var hint = document.getElementById('checkoutMaxHint');
     if (hint) {
         hint.textContent = '(Max: ' + availQty + ')';
@@ -1755,6 +1969,18 @@ async function openCheckoutModal(sampleId) {
         borrowerDisplay.textContent = currentUser.display_name || currentUser.username || 'Unknown User';
     } else {
         borrowerDisplay.textContent = 'Not logged in';
+    }
+
+    // Pre-fill borrower email from session, make read-only if present
+    var emailField = document.getElementById('borrowerEmail');
+    if (currentUser && currentUser.email) {
+        emailField.value = currentUser.email;
+        emailField.readOnly = true;
+        emailField.classList.add('readonly-email-field');
+    } else {
+        emailField.value = '';
+        emailField.readOnly = false;
+        emailField.classList.remove('readonly-email-field');
     }
 
     const info = document.getElementById('checkoutSampleInfo');
