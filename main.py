@@ -429,7 +429,7 @@ async def get_current_user(request: Request) -> Optional[UserOut]:
 app = FastAPI(
     title="HC R&amp;D Sample Library API",
     description="Backend for sample inventory and checkout tracking.",
-    version="1.6.6",
+    version="2.0.1",
     docs_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/docs",
     redoc_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/redoc",
     openapi_url=None if os.getenv("ENABLE_DOCS", "1") != "1" else "/openapi.json",

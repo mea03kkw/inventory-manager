@@ -1,4 +1,4 @@
-# HC R&amp;D Sample Library v2.0.0
+# HC R&amp;D Sample Library v2.0.1
 
 Internal web application for managing sample inventory, checkout, and return tracking.
 
@@ -145,6 +145,15 @@ Never commit real credentials into the repository.
 - Ongoing hardening items include session security, CSRF protection, and audit logging.
 
 ## Version History
+
+### V2.0.1
+Focus: UX patch — checkout flow, session recovery, photo save reliability, dashboard alignment
+
+- **Checkout modal**: borrower email auto-filled from session profile; client-side quantity validation with inline error and disabled submit on excess
+- **Session expiry**: global fetch 401 interceptor shows "Session Expired" overlay with "Sign In" recovery; redundant error toasts suppressed when overlay is visible
+- **Photo save feedback**: two-phase submit (record save → photo upload/delete) keeps modal open on photo failure; operation-specific retry button (Retry Upload / Retry Removal)
+- **Rack Summary alignment**: changed from status-string-based counting (`Status = 'IN_STOCK'`) to quantity-state gating (`available_quantity > 0`), matching Dashboard Stats — fixes record-count mismatch for partially-checked-out samples
+- Global version bumped from v2.0.0 → v2.0.1
 
 ### V2.0.0
 Focus: sample identity redesign with auto-generated codes and master data
